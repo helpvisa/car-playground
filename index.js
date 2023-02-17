@@ -131,14 +131,14 @@ class VehicleBody {
   updateWheels() {
     for (let i = 0; i < this.wheels.length; i++) {
       let position = new THREE.Vector3();
-      let direction = new THREE.Vector3();
+      let direction = new THREE.Vector3(0, -1, 0);
 
       this.wheels[i].obj.getWorldPosition(position);
-      this.wheels[i].obj.getWorldDirection(direction);
+      direction.applyQuaternion(this.wheels[i].obj.quaternion); // get down vector of wheel
 
       // cast a ray to see if the wheel is touching the ground
       position.add(new THREE.Vector3(0, this.wheelRadius, 0));
-      this.raycaster.set(position, new THREE.Vector3(0, -1, 0)); // down vector should be relative to wheel; this needs to be fixed
+      this.raycaster.set(position, direction); // down vector is relative to wheel
       const intersects = this.raycaster.intersectObject(plane); // intersect our plane
       if (intersects.length > 0) {
         this.wheels[i].target = intersects[0].point;
@@ -150,9 +150,11 @@ class VehicleBody {
       }
 
       // set visual mesh position
-      this.wheels[i].mesh.position.x = this.wheels[i].target.x - this.parent.position.x;
-      this.wheels[i].mesh.position.y = this.wheels[i].target.y - this.parent.position.y;
-      this.wheels[i].mesh.position.z = this.wheels[i].target.z - this.parent.position.z;
+      scene.attach(this.wheels[i].mesh); // attach to scene, modify global transform
+      this.wheels[i].mesh.position.x = this.wheels[i].target.x;
+      this.wheels[i].mesh.position.y = this.wheels[i].target.y;
+      this.wheels[i].mesh.position.z = this.wheels[i].target.z;
+      this.parent.attach(this.wheels[i].mesh); // reattach to parent group for rotation
     }
   }
 
@@ -320,6 +322,7 @@ vehicleBox.body.setFriction(0);
 vehicleBox.body.setRestitution(0);
 vehicleBox.body.setActivationState(4); // prevent the rigidbody from sleeping
 physicsWorld.addRigidBody(vehicleBox.body);
+vehicleBox.body.setAngularVelocity(new Ammo.btVector3(0.5, 1, 0));
 
 // setup our rigidbodies list
 const rigidBodies = [{mesh: vehicleGroup, rigidBody: vehicleBox}];
