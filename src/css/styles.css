@@ -2,3 +2,7 @@
   margin: 0px;
   padding: 0px;
 }
+
+canvas {
+  margin: 20vh 20vw;
+}
