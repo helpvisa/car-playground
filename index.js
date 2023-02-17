@@ -39,10 +39,12 @@ class RigidBody {
 };
 // vehicle rigidbody
 class VehicleBody {
-  constructor() {
-    this.wheelRadius = 1.5;
-    this.suspensionStrength = 50;
-    this.suspensionDamping = 12;
+  constructor(group, wheelRadius, suspensionStrength, suspensionDamping) {
+    this.parent = group;
+
+    this.wheelRadius = wheelRadius;
+    this.suspensionStrength = suspensionStrength;
+    this.suspensionDamping = suspensionDamping;
 
     this.raycaster = new THREE.Raycaster();
     this.raycaster.near = 0;
@@ -94,48 +96,41 @@ class VehicleBody {
     // create 4 wheels
     for (let i = 0; i < 4; i++) {
       const wheel = {
-        position: new THREE.Vector3(transform.position.x, transform.position.y, transform.position.z),
         target: new THREE.Vector3(transform.position.x, transform.position.y, transform.position.z),
         type: i,
         isGrounded: false,
-        debugMesh: new THREE.Mesh(
+        obj: new THREE.Object3D(),
+        mesh: new THREE.Mesh(
           new THREE.SphereGeometry(this.wheelRadius),
           new THREE.MeshStandardMaterial({
-            color: 0x202020
-          }))
+          color: 0x202020
+        })),
       }
-      wheel.position.y -= this.size.y / 2;
-      wheel.position.y -= 1;
+      wheel.obj.position.y -= (this.size.y / 2) + 1;
 
       switch (i) {
         case 0:
-          wheel.position.x += this.size.x / 2;
-          wheel.position.z += this.size.z / 2;
+          wheel.obj.position.x += this.size.x / 2;
+          wheel.obj.position.z += this.size.z / 2;
           break;
         case 1:
-          wheel.position.x -= this.size.x / 2;
-          wheel.position.z += this.size.z / 2;
+          wheel.obj.position.x -= this.size.x / 2;
+          wheel.obj.position.z += this.size.z / 2;
           break;
         case 2:
-          wheel.position.x += this.size.x / 2;
-          wheel.position.z -= this.size.z / 2;
+          wheel.obj.position.x += this.size.x / 2;
+          wheel.obj.position.z -= this.size.z / 2;
           break;
         case 3:
-          wheel.position.x -= this.size.x / 2;
-          wheel.position.z -= this.size.z / 2;
+          wheel.obj.position.x -= this.size.x / 2;
+          wheel.obj.position.z -= this.size.z / 2;
           break;
       }
-      
-      // rotate our wheel about the center point
-      // wheel.position.applyQuaternion(transform.rotation);
-      wheel.debugMesh.position.x = wheel.position.x;
-      wheel.debugMesh.position.y = wheel.position.y;
-      wheel.debugMesh.position.z = wheel.position.z;
-      wheel.debugMesh.castShadow = true;
+      wheel.obj.castShadow = true;
+      // add the mesh to the scene
+      this.parent.add(wheel.obj);
+      scene.add(wheel.mesh);
       this.wheels.push(wheel);
-
-      // add the debug mesh to the scene
-      scene.add(wheel.debugMesh);
     }
   }
 
@@ -144,49 +139,29 @@ class VehicleBody {
     let transform = this.getTransform();
 
     for (let i = 0; i < this.wheels.length; i++) {
-      // update the wheel position on chassis
-      this.wheels[i].position = new THREE.Vector3(transform.position.x, transform.position.y, transform.position.z);
-      this.wheels[i].position.y -= this.size.y / 2;
-      this.wheels[i].position.y -= 1;
+      let position = new THREE.Vector3();
+      let direction = new THREE.Vector3();
 
-      switch (i) {
-        case 0:
-          this.wheels[i].position.x += this.size.x / 2;
-          this.wheels[i].position.z += this.size.z / 2;
-          break;
-        case 1:
-          this.wheels[i].position.x -= this.size.x / 2;
-          this.wheels[i].position.z += this.size.z / 2;
-          break;
-        case 2:
-          this.wheels[i].position.x += this.size.x / 2;
-          this.wheels[i].position.z -= this.size.z / 2;
-          break;
-        case 3:
-          this.wheels[i].position.x -= this.size.x / 2;
-          this.wheels[i].position.z -= this.size.z / 2;
-          break;
-      }
-    
-      // apply rotation
-      // this.wheels[i].position.applyQuaternion(transform.rotation);
-      this.wheels[i].debugMesh.position.x = this.wheels[i].target.x;
-      this.wheels[i].debugMesh.position.y = this.wheels[i].target.y;
-      this.wheels[i].debugMesh.position.z = this.wheels[i].target.z;
+      this.wheels[i].obj.getWorldPosition(position);
+      this.wheels[i].obj.getWorldDirection(direction);
 
       // cast a ray to see if the wheel is touching the ground
-      let tempWheelPos = new THREE.Vector3(this.wheels[i].position.x, this.wheels[i].position.y, this.wheels[i].position.z);
-      tempWheelPos.add(new THREE.Vector3(0, this.wheelRadius, 0));
-      this.raycaster.set(tempWheelPos, new THREE.Vector3(0, -1, 0));
+      position.add(new THREE.Vector3(0, this.wheelRadius, 0));
+      this.raycaster.set(position, new THREE.Vector3(0, -1, 0));
       const intersects = this.raycaster.intersectObject(plane); // intersect our plane
       if (intersects.length > 0) {
         this.wheels[i].target = intersects[0].point;
         this.wheels[i].target.y += this.wheelRadius;
         this.wheels[i].isGrounded = true;
       } else {
-        this.wheels[i].target = this.wheels[i].position;
+        this.wheels[i].target = position.sub(new THREE.Vector3(0, this.wheelRadius, 0));
         this.wheels[i].isGrounded = false;
       }
+
+      // set visual mesh position
+      this.wheels[i].mesh.position.x = this.wheels[i].target.x;
+      this.wheels[i].mesh.position.y = this.wheels[i].target.y;
+      this.wheels[i].mesh.position.z = this.wheels[i].target.z;
     }
   }
 
@@ -196,9 +171,11 @@ class VehicleBody {
     for (let i = 0; i < this.wheels.length; i++) {
       if (this.wheels[i].isGrounded) {
         let btWheelPos = new Ammo.btVector3(this.wheels[i].target.x, this.wheels[i].target.y, this.wheels[i].target.z);
+        let wheelWorldPos = new THREE.Vector3();
+        this.wheels[i].obj.getWorldPosition(wheelWorldPos);
 
         let offset = new THREE.Vector3(this.wheels[i].target.x, this.wheels[i].target.y, this.wheels[i].target.z);
-        offset.sub(this.wheels[i].position);
+        offset.sub(wheelWorldPos);
 
         // calculate a spring force and apply it
         let springForce = offset.multiplyScalar(this.suspensionStrength);
@@ -206,8 +183,16 @@ class VehicleBody {
         this.body.applyForce(springForce, btWheelPos);
 
         // calculate a damping force and apply it
+        // calculate the velocity at the point of our wheel
+        let centerOfMass = this.getTransform().position;
+        let lever = new THREE.Vector3(this.wheels[i].target.x, this.wheels[i].target.y, this.wheels[i].target.z);
+        lever.sub(centerOfMass);
         let velocity = this.body.getLinearVelocity();
-        velocity = new THREE.Vector3(velocity.x(), velocity.y(), velocity.z()); 
+        velocity = new THREE.Vector3(velocity.x(), velocity.y(), velocity.z());
+        let angularVelocity = this.body.getAngularVelocity();
+        angularVelocity = new THREE.Vector3(angularVelocity.x(), angularVelocity.y(), angularVelocity.z());
+        velocity.add(angularVelocity.cross(lever)); // this is our velocity at point of wheel
+
         let dampingForce = velocity.multiplyScalar(-this.suspensionDamping);
         dampingForce = new Ammo.btVector3(dampingForce.x, dampingForce.y, dampingForce.z);
         this.body.applyForce(dampingForce, btWheelPos);
@@ -319,28 +304,32 @@ rbGround.createBox(0, new THREE.Vector3(plane.position.x, plane.position.y - 1, 
 rbGround.body.setRestitution(1.0);
 physicsWorld.addRigidBody(rbGround.body);
 
+// create our testing vehicle
+const vehicleGroup = new THREE.Group();
 const box = new THREE.Mesh(
-  new THREE.BoxGeometry(4, 4, 4),
+  new THREE.BoxGeometry(10, 3, 6),
   new THREE.MeshStandardMaterial({
     color: 0x808080
   }));
-box.position.set(0, 15, 0);
-box.rotation.set(0, 0, 0);
 box.castShadow = true;
 box.receiveShadow = true;
+vehicleGroup.add(box);
+vehicleGroup.position.set(0, 30, 0);
+vehicleGroup.rotation.set(0.15, 0.65, 0.25);
 // setup rigidbody for this box
-const vehicleBox = new VehicleBody();
-vehicleBox.createBox(10, box.position, box.quaternion, new THREE.Vector3(4, 4, 4));
+const vehicleBox = new VehicleBody(vehicleGroup, 1.5, 110, 12);
+vehicleBox.createBox(10, vehicleGroup.position, vehicleGroup.quaternion, new THREE.Vector3(10, 3, 6));
 vehicleBox.createWheels();
 vehicleBox.body.setFriction(0);
 vehicleBox.body.setRestitution(0);
+vehicleBox.body.setActivationState(4); // prevent the rigidbody from sleeping
 physicsWorld.addRigidBody(vehicleBox.body);
 
 // setup our rigidbodies list
-const rigidBodies = [{mesh: box, rigidBody: vehicleBox}];
+const rigidBodies = [{mesh: vehicleGroup, rigidBody: vehicleBox}];
 
 // add objects to scene
-scene.add(sun, ambient, plane, box);
+scene.add(sun, ambient, plane, vehicleGroup);
  
 // setup step function (update function)
 function step(delta) {
