@@ -16,6 +16,10 @@ const texture = new THREE.TextureLoader().load("./src/textures/wheel_test_tex.jp
 texture.wrapS = THREE.RepeatWrapping;
 texture.wrapT = THREE.RepeatWrapping;
 texture.repeat.set(1, 1);
+
+// set up a temp ammo vector
+const tempTrans0 = new Ammo.btTransform();
+
 // define our classes
 // basic 3D box rigidbody
 class RigidBody {
@@ -97,7 +101,7 @@ class VehicleBody {
 
   // get transform position
   getTransform() {
-    let tempTransform = new Ammo.btTransform();
+    let tempTransform = tempTrans0;
     this.motionState.getWorldTransform(tempTransform);
     const pos = tempTransform.getOrigin();
     const rot = tempTransform.getRotation();
@@ -234,7 +238,7 @@ class VehicleBody {
         let localTarget = new THREE.Vector3();
         localTarget = this.wheels[i].target.clone();
         localTarget.sub(transform.position);
-        localTarget.add(this.centerOfGravity); // add our 'center of gravity' offset
+        localTarget.sub(this.centerOfGravity); // add our 'center of gravity' offset
 
         // convert his local position into something the physics engine can understand
         let btWheelPos = this.btVec0;
@@ -355,7 +359,7 @@ class VehicleBody {
       let localTarget = new THREE.Vector3();
       localTarget = this.wheels[i].target.clone();
       localTarget.sub(transform.position);
-      localTarget.add(this.centerOfGravity); // add our 'center of gravity' offset
+      localTarget.sub(this.centerOfGravity); // add our 'center of gravity' offset
 
       // convert it into something the physics engine can understand
       let btWheelPos = this.btVec3;
@@ -528,7 +532,7 @@ vehicleGroup.add(box);
 vehicleGroup.position.set(0, 20, 0);
 // setup rigidbody for this box
 const vehicleBox = new VehicleBody(vehicleGroup);
-vehicleBox.centerOfGravity.set(0, 4, 0); // apply an offset to the center of gravity
+vehicleBox.centerOfGravity.set(0, -4, 0); // apply an offset to the center of gravity
 vehicleBox.createBox(10, vehicleGroup.position, vehicleGroup.quaternion, new THREE.Vector3(10, 8, 16));
 // create wheels by using an array of relative wheel positions
 vehicleBox.createWheels([
@@ -559,7 +563,7 @@ function step(delta) {
   physicsWorld.stepSimulation(delta, 10);
 
   for (let i = 0; i < rigidBodies.length; i++) {
-    let tempTransform = new Ammo.btTransform();
+    let tempTransform = tempTrans0;
     rigidBodies[i].rigidBody.motionState.getWorldTransform(tempTransform);
     const pos = tempTransform.getOrigin();
     const rot = tempTransform.getRotation();
