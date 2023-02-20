@@ -114,6 +114,19 @@ class VehicleBody {
     }
   }
 
+  // toggle visible wheels
+  toggleWheelVisibility() {
+    for (let i = 0; i < this.wheels.length; i++) {
+      this.wheels[i].mesh.visible = !this.wheels[i].mesh.visible;
+    }
+  }
+
+  // toggle debug lines
+  toggleDebug() {
+    this.drawDebug = !this.drawDebug;
+    console.log(this.drawDebug);
+  }
+
   getVelocityAtPoint(point) {
     let centerOfMass = this.getTransform().position;
     centerOfMass.add(this.centerOfGravity);
@@ -278,8 +291,11 @@ class VehicleBody {
           this.wheels[i].springPoints.push(springDestination);
           // setup our geometry
           this.wheels[i].springGeometry.setFromPoints(this.wheels[i].springPoints);
+        } else {
+          this.wheels[i].springPoints = [];
+          this.wheels[i].springGeometry.setFromPoints(this.wheels[i].springPoints);
         }
-      } else if (this.drawDebug) { // clear suspension lines
+      } else { // clear suspension lines
         this.wheels[i].springPoints = [];
         this.wheels[i].springGeometry.setFromPoints(this.wheels[i].springPoints);
       }
@@ -405,6 +421,9 @@ class VehicleBody {
         }
         this.wheels[i].slipPoints = [pos, slipPos];
         this.wheels[i].slipGeometry.setFromPoints(this.wheels[i].slipPoints);
+      } else {
+        this.wheels[i].accelGeometry.setFromPoints([]);
+        this.wheels[i].slipGeometry.setFromPoints([]);
       }
     }
   }
@@ -452,7 +471,23 @@ movementDiv.append(accEl, decEl, brakEl);
 steerDiv.append(steerLEl, steerREl);
 controlDiv.append(movementDiv, steerDiv);
 
+// add toggles
+let toggleDebugEl = document.createElement("button");
+let toggleWheelsEl = document.createElement("button");
+toggleDebugEl.textContent = "toggle debug lines";
+toggleWheelsEl.textContent = "toggle wheel drawing";
+toggleDebugEl.className = "toggle";
+toggleWheelsEl.className = "toggle";
+// add functionality to toggles
+toggleDebugEl.addEventListener("click", () => {
+  vehicleBox.toggleDebug();
+});
+toggleWheelsEl.addEventListener("click", () => {
+  vehicleBox.toggleWheelVisibility();
+});
+
 canvasDiv.appendChild(controlDiv);
+document.body.append(toggleDebugEl, toggleWheelsEl);
 // add the canvas body to the page
 document.body.appendChild(canvasDiv);
 
@@ -485,6 +520,7 @@ document.addEventListener('keydown', (e) => {
       input.right = true;
       break;
     case " ":
+      e.preventDefault();
       input.brake = true;
       break;
   }
@@ -650,7 +686,7 @@ const vehicleGroup = new THREE.Group();
 const box = new THREE.Mesh(
   new THREE.BoxGeometry(10, 7, 20),
   new THREE.MeshStandardMaterial({
-    color: 0x808080
+    color: 0x408080
   }));
 box.castShadow = true;
 box.receiveShadow = true;

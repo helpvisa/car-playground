@@ -37,3 +37,10 @@
   padding: 2px;
   margin: 4px;
 }
+
+.toggle {
+  color: white;
+  margin: 2px;
+  padding: 2px;
+  font-size: 1.7vw;
+}
