@@ -205,7 +205,7 @@ class VehicleBody {
       this.raycaster.far = this.wheels[i].wheelRadius * 2;
       // now cast the ray
       this.raycaster.set(position, direction); // down vector is relative to wheel
-      const intersects = this.raycaster.intersectObject(plane); // intersect our plane
+      const intersects = this.raycaster.intersectObjects([plane, cylinder1, cylinder2, boxBump]); // intersect our plane
       if (intersects.length > 0) {
         this.wheels[i].target = intersects[0].point;
         this.wheels[i].target.y += this.wheels[i].wheelRadius;
@@ -623,13 +623,32 @@ plane.rotation.x = -Math.PI / 2;
 // setup ground rigidbody
 const rbGround = new RigidBody();
 rbGround.createBox(0, new THREE.Vector3(plane.position.x, plane.position.y - 1, plane.position.z), plane.quaternion, new THREE.Vector3(1000, 1000, 1));
-rbGround.body.setRestitution(1.0);
+rbGround.body.setRestitution(0.0);
 physicsWorld.addRigidBody(rbGround.body);
+// setup roadbumps
+const cylinder1 = new THREE.Mesh(
+  new THREE.CylinderGeometry(2, 2, 60),
+  new THREE.MeshStandardMaterial({
+    color: 0x808080
+  }));
+cylinder1.castShadow = true;
+cylinder1.receiveShadow = true;
+cylinder1.rotation.x = -Math.PI / 2;
+cylinder1.position.set(40, 0, 0);
+const cylinder2 = cylinder1.clone();
+cylinder2.position.set(-40, 0, 0);
+const boxBump = new THREE.Mesh(
+  new THREE.BoxGeometry(40, 4, 40),
+  new THREE.MeshStandardMaterial({
+    color: 0x808080
+  }));
+boxBump.castShadow = true;
+boxBump.receiveShadow = true;
 
 // create our testing vehicle
 const vehicleGroup = new THREE.Group();
 const box = new THREE.Mesh(
-  new THREE.BoxGeometry(10, 8, 16),
+  new THREE.BoxGeometry(10, 7, 20),
   new THREE.MeshStandardMaterial({
     color: 0x808080
   }));
@@ -639,8 +658,8 @@ vehicleGroup.add(box);
 vehicleGroup.position.set(0, 20, 0);
 // setup rigidbody for this box
 const vehicleBox = new VehicleBody(vehicleGroup);
-vehicleBox.centerOfGravity.set(0, -4, 0); // apply an offset to the center of gravity
-vehicleBox.createBox(10, vehicleGroup.position, vehicleGroup.quaternion, new THREE.Vector3(10, 8, 16));
+vehicleBox.centerOfGravity.set(0, -3.5, 0); // apply an offset to the center of gravity
+vehicleBox.createBox(10, vehicleGroup.position, vehicleGroup.quaternion, new THREE.Vector3(10, 7, 20));
 // create wheels by using an array of relative wheel positions
 vehicleBox.createWheels([
   { pos: new THREE.Vector3(vehicleBox.size.x / 2 + 1, -vehicleBox.size.y / 1.5, vehicleBox.size.z / 3), suspensionStrength: 80, suspensionDamping: 12, wheelRadius: 2, powered: true, steering: true, brakes: true },
@@ -658,7 +677,7 @@ vehicleBox.body.setAngularVelocity(new Ammo.btVector3(0, 0, 0)); // set an angul
 const rigidBodies = [{mesh: vehicleGroup, rigidBody: vehicleBox}];
 
 // add objects to scene
-scene.add(sun, ambient, plane, vehicleGroup);
+scene.add(sun, ambient, plane, cylinder1, cylinder2, boxBump, vehicleGroup);
  
 // setup step function (update function)
 function step(delta) {
