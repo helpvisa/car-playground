@@ -4,8 +4,8 @@
   background-color: rgb(65, 65, 65);
 }
 
-canvas {
-  margin: 20vh 20vw;
+#canvas-body {
+  margin: 10vh 20vw;
 }
 
 #info {
@@ -17,4 +17,23 @@ canvas {
   text-align: center;
   z-index: 100;
   display: block;
+}
+
+#controls {
+  display: flex;
+  justify-content: space-between;
+  margin: 0px;
+  height: 0px;
+}
+
+#controls button {
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  -ms-user-select: none;
+  user-select: none;
+  color: black;
+  font-size: 3.5vw;
+  background-color: darkkhaki;
+  padding: 2px;
+  margin: 4px;
 }

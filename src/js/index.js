@@ -8,6 +8,7 @@ Ammo().then(function(AmmoLib) {
   main();
 });
 
+/***********************************************************************************/
 // define our main function
 function main() {
 // load textures
@@ -150,7 +151,7 @@ class VehicleBody {
         powered: wheelArray[i].powered,
         steering: wheelArray[i].steering,
         brakes: wheelArray[i].brakes,
-        grip: 0.5, // grip strength
+        grip: 0.2, // grip strength
         mesh: new THREE.Mesh(
           new THREE.CylinderGeometry(wheelArray[i].wheelRadius, wheelArray[i].wheelRadius, 0.5),
           new THREE.MeshStandardMaterial({
@@ -385,11 +386,11 @@ class VehicleBody {
         // get forward force and make a line w it to demonstrate acceleration
         let pos = this.wheels[i].target.clone();
         let accelForcePoint = new THREE.Vector3(accelForce.x(), accelForce.y(), accelForce.z()).multiplyScalar(0.25);
-        if (!this.wheels[i].powered) {
+        if (!this.wheels[i].powered || !this.wheels[i].isGrounded) {
           accelForcePoint = new THREE.Vector3(0, 0, 0);
         }
         accelForcePoint.add(pos);
-        if (this.wheels[i].brakes) {
+        if (this.wheels[i].brakes && this.wheels[i].isGrounded) {
           accelForcePoint.add(new THREE.Vector3(brakingForce.x(), brakingForce.y(), brakingForce.z()).multiplyScalar(0.25));
         }
 
@@ -408,6 +409,59 @@ class VehicleBody {
     }
   }
 }
+
+/*************************************************************************/
+// initialize ammo.js physics state before initializing our three.js scene
+const collisionConfiguration = new Ammo.btDefaultCollisionConfiguration();
+const dispatcher = new Ammo.btCollisionDispatcher(collisionConfiguration);
+const broadphase = new Ammo.btDbvtBroadphase();
+const solver = new Ammo.btSequentialImpulseConstraintSolver();
+const physicsWorld = new Ammo.btDiscreteDynamicsWorld(
+  dispatcher, broadphase, solver, collisionConfiguration);
+physicsWorld.setGravity(new Ammo.btVector3(0, -19.6, 0));
+
+// construct our world scene and setup three.js
+const threejs = new THREE.WebGLRenderer();
+threejs.shadowMap.enabled = true;
+threejs.shadowMap.type = THREE.PCFSoftShadowMap;
+threejs.setPixelRatio(window.devicePixelRatio);
+threejs.setSize(window.innerWidth * 0.6, window.innerHeight * 0.6);
+
+// create a div to hold the canvas
+let canvasDiv = document.createElement("div");
+canvasDiv.id = "canvas-body";
+// add our three.js element
+canvasDiv.appendChild(threejs.domElement);
+// add our controls
+let controlDiv = document.createElement("div");
+controlDiv.id = "controls";
+let movementDiv = document.createElement("div");
+let steerDiv = document.createElement("div");
+
+let accEl = document.createElement("button");
+accEl.textContent = "accel";
+let decEl = document.createElement("button");
+decEl.textContent = "rev";
+let brakEl = document.createElement("button");
+brakEl.textContent = "brk";
+let steerLEl = document.createElement("button");
+steerLEl.textContent = "left";
+let steerREl = document.createElement("button");
+steerREl.textContent = "right";
+movementDiv.append(accEl, decEl, brakEl);
+steerDiv.append(steerLEl, steerREl);
+controlDiv.append(movementDiv, steerDiv);
+
+canvasDiv.appendChild(controlDiv);
+// add the canvas body to the page
+document.body.appendChild(canvasDiv);
+
+// window resize function (resizes canvas)
+window.addEventListener("resize", () => {
+  camera.aspect = window.innerWidth / window.innerHeight;
+  camera.updateProjectionMatrix();
+  threejs.setSize(window.innerWidth * 0.6, window.innerHeight * 0.6);
+}, false);
 
 // register an event handler for keyboard input
 const input = {
@@ -454,26 +508,79 @@ document.addEventListener('keyup', (e) => {
       break;
   }
 });
-
-// initialize ammo.js physics state before initializing our three.js scene
-const collisionConfiguration = new Ammo.btDefaultCollisionConfiguration();
-const dispatcher = new Ammo.btCollisionDispatcher(collisionConfiguration);
-const broadphase = new Ammo.btDbvtBroadphase();
-const solver = new Ammo.btSequentialImpulseConstraintSolver();
-const physicsWorld = new Ammo.btDiscreteDynamicsWorld(
-  dispatcher, broadphase, solver, collisionConfiguration);
-physicsWorld.setGravity(new Ammo.btVector3(0, -19.6, 0));
-
-// construct our world scene and setup three.js
-const threejs = new THREE.WebGLRenderer();
-threejs.shadowMap.enabled = true;
-threejs.shadowMap.type = THREE.PCFSoftShadowMap;
-threejs.setPixelRatio(window.devicePixelRatio);
-threejs.setSize(window.innerWidth * 0.6, window.innerHeight * 0.6);
-
-document.body.appendChild(threejs.domElement);
-
-// call resize function?
+///////////////
+// now register for touch controls and button presses
+accEl.addEventListener("touchstart", () => {
+  input.accel = true;
+});
+decEl.addEventListener("touchstart", () => {
+  input.decel = true;
+});
+brakEl.addEventListener("touchstart", () => {
+  input.brake = true;
+});
+steerLEl.addEventListener("touchstart", () => {
+  input.left = true;
+});
+steerREl.addEventListener("touchstart", () => {
+  input.right = true;
+});
+/////////////////
+accEl.addEventListener("mousedown", () => {
+  input.accel = true;
+});
+decEl.addEventListener("mousedown", () => {
+  input.decel = true;
+});
+brakEl.addEventListener("mousedown", () => {
+  input.brake = true;
+});
+steerLEl.addEventListener("mousedown", () => {
+  input.left = true;
+});
+steerREl.addEventListener("mousedown", () => {
+  input.right = true;
+});
+//////////
+/* now unregister touches and clicks too */
+/////////
+accEl.addEventListener("touchend", () => {
+  input.accel = false;
+});
+decEl.addEventListener("touchend", () => {
+  input.decel = false;
+});
+brakEl.addEventListener("touchend", () => {
+  input.brake = false;
+});
+steerLEl.addEventListener("touchend", () => {
+  input.left = false;
+});
+steerREl.addEventListener("touchend", () => {
+  input.right = false;
+});
+//////////////////////
+accEl.addEventListener("mouseup", () => {
+  input.accel = false;
+});
+decEl.addEventListener("mouseup", () => {
+  input.decel = false;
+});
+brakEl.addEventListener("mouseup", () => {
+  input.brake = false;
+});
+steerLEl.addEventListener("mouseup", () => {
+  input.left = false;
+});
+steerREl.addEventListener("mouseup", () => {
+  input.right = false;
+});
+///////////
+// now disable context clicking to avoid popups
+document.addEventListener("contextmenu", (e) => {
+  e.preventDefault();
+  return false;
+});
 
 // setup our internal clock
 const t = new THREE.Clock();
