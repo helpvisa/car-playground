@@ -7,3 +7,14 @@
 canvas {
   margin: 20vh 20vw;
 }
+
+#info {
+  color: white;
+  font-size: 3vw;
+  position: absolute;
+  top: 4vh;
+  width: 100%;
+  text-align: center;
+  z-index: 100;
+  display: block;
+}
