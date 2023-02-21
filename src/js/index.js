@@ -124,7 +124,6 @@ class VehicleBody {
   // toggle debug lines
   toggleDebug() {
     this.drawDebug = !this.drawDebug;
-    console.log(this.drawDebug);
   }
 
   getVelocityAtPoint(point) {
@@ -166,7 +165,7 @@ class VehicleBody {
         brakes: wheelArray[i].brakes,
         grip: 0.1, // grip strength
         mesh: new THREE.Mesh(
-          new THREE.CylinderGeometry(wheelArray[i].wheelRadius, wheelArray[i].wheelRadius, 0.5),
+          new THREE.CylinderGeometry(wheelArray[i].wheelRadius, wheelArray[i].wheelRadius, 1.75),
           new THREE.MeshStandardMaterial({
           color: 0x404040
         })),
@@ -347,8 +346,11 @@ class VehicleBody {
 
       // determine slip force
       let slipVelocity = velocity.clone();
-      slipVelocity.multiplyScalar(this.wheels[i].grip);
       slipVelocity.projectOnVector(slipDir);
+      let percentageSlip = slipVelocity.length();
+      percentageSlip /= velocity.length();
+      this.wheels[i].grip = 1 - slipCurve.getValueAtPos(percentageSlip); // replace with lookup curve
+      slipVelocity.multiplyScalar(this.wheels[i].grip);
       let slipForce = this.btVec0;
       slipForce.setValue(-slipVelocity.x, 0, -slipVelocity.z);
 
@@ -417,7 +419,7 @@ class VehicleBody {
         let slipPos = new THREE.Vector3();
         slipPos = pos.clone();
         if (this.wheels[i].isGrounded) {
-          slipPos.add(new THREE.Vector3(slipForce.x(), slipForce.y(), slipForce.z()));
+          slipPos.add(new THREE.Vector3(slipForce.x(), slipForce.y(), slipForce.z()).multiplyScalar(5));
         }
         this.wheels[i].slipPoints = [pos, slipPos];
         this.wheels[i].slipGeometry.setFromPoints(this.wheels[i].slipPoints);
@@ -632,7 +634,7 @@ camera.lookAt(0, 0, 0);
 
 // setup lights
 const sun = new THREE.DirectionalLight(0xFFFFFF);
-sun.position.set(150, 100, -80);
+sun.position.set(0, 100, 0);
 sun.target.position.set(0, 0, 0);
 sun.castShadow = true;
 sun.shadow.bias = -0.002;
@@ -684,7 +686,7 @@ boxBump.receiveShadow = true;
 // create our testing vehicle
 const vehicleGroup = new THREE.Group();
 const box = new THREE.Mesh(
-  new THREE.BoxGeometry(6, 4, 24),
+  new THREE.BoxGeometry(9, 6, 24),
   new THREE.MeshStandardMaterial({
     color: 0x408080
   }));
@@ -695,13 +697,13 @@ vehicleGroup.position.set(0, 20, 0);
 // setup rigidbody for this box
 const vehicleBox = new VehicleBody(vehicleGroup);
 vehicleBox.centerOfGravity.set(0, -2, 0); // apply an offset to the center of gravity
-vehicleBox.createBox(10, vehicleGroup.position, vehicleGroup.quaternion, new THREE.Vector3(6, 4, 24));
+vehicleBox.createBox(10, vehicleGroup.position, vehicleGroup.quaternion, new THREE.Vector3(9, 6, 24));
 // create wheels by using an array of relative wheel positions
 vehicleBox.createWheels([
-  { pos: new THREE.Vector3(vehicleBox.size.x / 2 + 1, -vehicleBox.size.y / 1.5, vehicleBox.size.z / 3), suspensionStrength: 80, suspensionDamping: 12, wheelRadius: 2.5, powered: true, steering: true, brakes: true },
-  { pos: new THREE.Vector3(-vehicleBox.size.x / 2 - 1, -vehicleBox.size.y / 1.5, vehicleBox.size.z / 3), suspensionStrength: 80, suspensionDamping: 12, wheelRadius: 2.5, powered: true, steering: true, brakes: true },
-  { pos: new THREE.Vector3(vehicleBox.size.x / 2 + 1, -vehicleBox.size.y / 1.5, -vehicleBox.size.z / 3), suspensionStrength: 40, suspensionDamping: 6, wheelRadius: 4, powered: false, steering: false, brakes: true },
-  { pos: new THREE.Vector3(-vehicleBox.size.x / 2 - 1, -vehicleBox.size.y / 1.5, -vehicleBox.size.z / 3), suspensionStrength: 40, suspensionDamping: 6, wheelRadius: 4, powered: false, steering: false, brakes: true }
+  { pos: new THREE.Vector3(vehicleBox.size.x / 2 + 1, -vehicleBox.size.y / 1.5, vehicleBox.size.z / 3), suspensionStrength: 80, suspensionDamping: 12, wheelRadius: 2.5, powered: false, steering: true, brakes: true },
+  { pos: new THREE.Vector3(-vehicleBox.size.x / 2 - 1, -vehicleBox.size.y / 1.5, vehicleBox.size.z / 3), suspensionStrength: 80, suspensionDamping: 12, wheelRadius: 2.5, powered: false, steering: true, brakes: true },
+  { pos: new THREE.Vector3(vehicleBox.size.x / 2 + 1, -vehicleBox.size.y / 1.5, -vehicleBox.size.z / 3), suspensionStrength: 40, suspensionDamping: 6, wheelRadius: 4, powered: true, steering: false, brakes: true },
+  { pos: new THREE.Vector3(-vehicleBox.size.x / 2 - 1, -vehicleBox.size.y / 1.5, -vehicleBox.size.z / 3), suspensionStrength: 40, suspensionDamping: 6, wheelRadius: 4, powered: true, steering: false, brakes: true }
 ]);
 vehicleBox.body.setFriction(0.85); // car will stop moving if body touches anything
 vehicleBox.body.setRestitution(0);
