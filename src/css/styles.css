@@ -10,9 +10,10 @@
 
 #info {
   color: white;
-  font-size: 3vw;
+  background-color: transparent;
+  font-size: 2.5vw;
   position: absolute;
-  top: 4vh;
+  top: 8vh;
   width: 100%;
   text-align: center;
   z-index: 100;
@@ -42,5 +43,5 @@
   color: white;
   margin-right: 2px;
   padding: 2px;
-  font-size: 1vw;
+  font-size: 2vw;
 }
