@@ -60,6 +60,11 @@ class VehicleBody {
     this.raycaster = new THREE.Raycaster();
     this.raycaster.near = 0;
 
+    // setup engine
+    this.maxRPM = 6000;
+    this.minRPM = 1000;
+    this.currentRPM = 0;
+
     // setup debug line materials
     this.drawDebug = true;
     this.springMat = new THREE.LineBasicMaterial({ color: 0x00FF00 });
@@ -155,6 +160,7 @@ class VehicleBody {
         target: new THREE.Vector3(transform.position.x, transform.position.y, transform.position.z),
         previousPosition: new THREE.Vector3(transform.position.x, transform.position.y, transform.position.z),
         previousVelocity: new THREE.Vector3(0, 0, 0),
+        previousFacing: new THREE.Vector3(0, 0, 1),
         isGrounded: false,
         obj: new THREE.Object3D(),
         wheelRadius: wheelArray[i].wheelRadius,
@@ -163,7 +169,8 @@ class VehicleBody {
         powered: wheelArray[i].powered,
         steering: wheelArray[i].steering,
         brakes: wheelArray[i].brakes,
-        grip: 0.1, // grip strength
+        slip: 1, // wheel slip percentage
+        grip: 1, // grip percentage
         mesh: new THREE.Mesh(
           new THREE.CylinderGeometry(wheelArray[i].wheelRadius, wheelArray[i].wheelRadius, 1.75),
           new THREE.MeshStandardMaterial({
@@ -201,6 +208,21 @@ class VehicleBody {
       this.parent.add(wheel.mesh);
       this.wheels.push(wheel);
     }
+  }
+
+  // determine RPM of engine based on user input
+  updateEngine() {
+    // clamp our RPM values
+    if (this.currentRPM < this.minRPM) {
+      this.currentRPM = this.minRPM;
+    } else if (this.currentRPM > this.maxRPM) {
+      this.currentRPM = this.maxRPM;
+    }
+
+    // this.wheels[i].rotationRate * gear ratio (1) * differential ratio (1) * 60 / (2 * Math.PI) <-- 60/2pi converts radians to RPM
+    let rpm;
+
+    console.log(this.currentRPM);
   }
 
   // update the position of the wheels
@@ -311,7 +333,7 @@ class VehicleBody {
       this.wheels[i].obj.getWorldQuaternion(wheelWorldQuat); 
       let forwardDir = new THREE.Vector3(0, 0, 1);
       forwardDir.applyQuaternion(wheelWorldQuat); // get forward-facing vector
-      forwardDir.y = 0; // negate y component (wheels don't add upward or downward acceleration force)
+      forwardDir.projectOnPlane(new THREE.Vector3(0, 1, 0));
       let slipDir = new THREE.Vector3(1, 0, 0);
       slipDir.applyQuaternion(wheelWorldQuat); // get right-facing vector
 
@@ -349,11 +371,40 @@ class VehicleBody {
       slipVelocity.projectOnVector(slipDir);
       let percentageSlip = slipVelocity.length();
       percentageSlip /= velocity.length();
-      this.wheels[i].grip = 1 - slipCurve.getValueAtPos(percentageSlip); // replace with lookup curve
-      slipVelocity.multiplyScalar(this.wheels[i].grip);
+      this.wheels[i].slip = 1 - slipCurve.getValueAtPos(percentageSlip); // replace with lookup curve
+      slipVelocity.multiplyScalar(this.wheels[i].slip);
       let slipForce = this.btVec0;
       slipForce.setValue(-slipVelocity.x, 0, -slipVelocity.z);
 
+      // apply a constant acceleration force and determine current wheel grip
+      let acceleration = input.accel ? 1 : 0;
+      acceleration += input.decel ? -1 : 0;
+      acceleration *= 200;
+      // determine the force exerted on the road by the wheel
+      let forwardVelocity = forwardDir.clone().multiplyScalar(acceleration);
+      // get distance traveled by wheel
+      let distanceTraveled = this.wheels[i].target.clone();
+      distanceTraveled.sub(this.wheels[i].previousPosition);
+      distanceTraveled.projectOnPlane(new THREE.Vector3(0, 1, 0)); // project onto our ground normal
+      // get angle between current and previous wheel position
+      let facingCurrent = forwardDir.clone();
+      let oldFacing = this.wheels[i].previousFacing.clone();
+      oldFacing.projectOnPlane(new THREE.Vector3(0, 1, 0));
+      // calculate our wheel slip torque
+      let wheelSlipTorque = forwardVelocity.length() * distanceTraveled.length() * oldFacing.angleTo(facingCurrent);
+      // this.wheels[i].grip = 1 - slipCurve.getValueAtPos(wheelSlipTorque);
+
+      // calculate rolling resistance
+      let rollResistance = velocity.clone();
+      rollResistance.multiplyScalar(-1);
+
+      let accelForce = this.btVec2;
+      accelForce.setValue(
+        rollResistance.x + (forwardDir.x * acceleration * this.wheels[i].grip),
+        rollResistance.y + (forwardDir.y * acceleration * this.wheels[i].grip),
+        rollResistance.z + (forwardDir.z * acceleration * this.wheels[i].grip)
+      );
+      // accelForce.setValue(forwardDir.x * acceleration * this.wheels[i].grip, forwardDir.y * acceleration * this.wheels[i].grip, forwardDir.z * acceleration * this.wheels[i].grip);
 
       // determine braking force
       let braking = input.brake ? 1 : 0;
@@ -362,17 +413,10 @@ class VehicleBody {
       let speed = brakeVelocity.length();
       if (speed > maxBrakeForce) {
         let scalar = maxBrakeForce / speed;
-        brakeVelocity.multiplyScalar(scalar);
+        brakeVelocity.multiplyScalar(scalar).multiplyScalar(this.wheels[i].grip);
       }
       let brakingForce = this.btVec1;
       brakingForce.setValue(brakeVelocity.x * -braking, 0, brakeVelocity.z * -braking);
-
-      // apply a constant acceleration force and determine current wheel grip
-      let acceleration = input.accel ? 1 : 0;
-      acceleration += input.decel ? -1 : 0;
-      acceleration *= 200;
-      let accelForce = this.btVec2;
-      accelForce.setValue(forwardDir.x * acceleration, forwardDir.y * acceleration, forwardDir.z * acceleration);
 
       // get local location of wheel target
       let localTarget = new THREE.Vector3();
@@ -396,8 +440,10 @@ class VehicleBody {
         accelForce.setValue(0, 0, 0); // clear accelForce vector
       }
 
-      // store wheel's previous velocity
+      // store wheel's previous velocity, position, and facing
       this.wheels[i].previousVelocity = velocity.clone();
+      this.wheels[i].previousPosition = this.wheels[i].target.clone();
+      this.wheels[i].previousFacing = forwardDir;
 
       // setup drawing of debug lines
       if (this.drawDebug) {
@@ -428,6 +474,17 @@ class VehicleBody {
         this.wheels[i].slipGeometry.setFromPoints([]);
       }
     }
+  }
+
+  // apply aerodynamic and surface drag
+  applyDrag() {
+    // calculate aerodynamic drag applied to entire car body
+    let aeroDrag = this.body.getLinearVelocity();
+    aeroDrag = new THREE.Vector3(aeroDrag.x(), aeroDrag.y(), aeroDrag.z()); // convert to three.js vector
+    aeroDrag.multiplyScalar(-aeroDrag.length() * 0.033);
+    let dragForce = this.btVec0;
+    dragForce.setValue(aeroDrag.x, aeroDrag.y, aeroDrag.z);
+    this.body.applyForce(dragForce);
   }
 }
 
@@ -696,7 +753,7 @@ vehicleGroup.add(box);
 vehicleGroup.position.set(0, 20, 0);
 // setup rigidbody for this box
 const vehicleBox = new VehicleBody(vehicleGroup);
-vehicleBox.centerOfGravity.set(0, -2, 0); // apply an offset to the center of gravity
+vehicleBox.centerOfGravity.set(0, -2.2, 0); // apply an offset to the center of gravity
 vehicleBox.createBox(10, vehicleGroup.position, vehicleGroup.quaternion, new THREE.Vector3(9, 6, 24));
 // create wheels by using an array of relative wheel positions
 vehicleBox.createWheels([
@@ -720,9 +777,11 @@ scene.add(sun, ambient, plane, cylinder1, cylinder2, boxBump, vehicleGroup);
 // setup step function (update function)
 function step(delta) {
   // update our vehicle
+  vehicleBox.updateEngine();
   vehicleBox.updateWheels();
   vehicleBox.calcSteering();
   vehicleBox.calcSuspension();
+  vehicleBox.applyDrag();
 
   physicsWorld.stepSimulation(delta, 10);
 
