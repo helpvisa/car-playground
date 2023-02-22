@@ -40,6 +40,10 @@
 }
 
 .toggle {
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  -ms-user-select: none;
+  user-select: none;
   color: white;
   margin-right: 2px;
   padding: 2px;
