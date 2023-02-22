@@ -84,6 +84,8 @@ class VehicleBody {
 
   // create our ammo.js box collider
   createBox(mass, pos, rot, size) {
+    this.mass = mass;
+
     this.transform = new Ammo.btTransform();
     this.transform.setIdentity();
     this.transform.setOrigin(new Ammo.btVector3(pos.x, pos.y, pos.z));
@@ -171,6 +173,8 @@ class VehicleBody {
         brakes: wheelArray[i].brakes,
         slip: 1, // wheel slip percentage
         grip: 1, // grip percentage
+        suspensionForceAtWheel: 1, // suspension force applied to this wheel
+        weightAtWheel: 1, // amount of weight applied to this wheel
         mesh: new THREE.Mesh(
           new THREE.CylinderGeometry(wheelArray[i].wheelRadius, wheelArray[i].wheelRadius, 1.75),
           new THREE.MeshStandardMaterial({
@@ -222,7 +226,7 @@ class VehicleBody {
     // this.wheels[i].rotationRate * gear ratio (1) * differential ratio (1) * 60 / (2 * Math.PI) <-- 60/2pi converts radians to RPM
     let rpm;
 
-    console.log(this.currentRPM);
+    // console.log(this.currentRPM);
   }
 
   // update the position of the wheels
@@ -269,6 +273,8 @@ class VehicleBody {
     // iterate through each of our wheels and calculate their suspension forces
     for (let i = 0; i < this.wheels.length; i++) {
       if (this.wheels[i].isGrounded) {
+        // cumulative force
+        let totalAppliedForce = this.btVec1;
         // get local position for target
         let localTarget = new THREE.Vector3();
         localTarget = this.wheels[i].target.clone();
@@ -286,30 +292,30 @@ class VehicleBody {
 
         // calculate a spring force and apply it
         let springForce = offset.multiplyScalar(this.wheels[i].suspensionStrength);
-        let tempSpring = springForce.clone();
-        springForce = this.btVec1;
-        springForce.setValue(tempSpring.x, tempSpring.y, tempSpring.z);
-        this.body.applyForce(springForce, btWheelPos);
+        // this.body.applyForce(springForce, btWheelPos);
 
         // calculate a damping force and apply it
         // calculate the velocity at the point of our wheel
         let velocity = this.getVelocityAtPoint(this.wheels[i].target);
         velocity.projectOnVector(new THREE.Vector3(0, 1, 0));
-
+        // use it to calc our spring damping force
         let dampingForce = velocity.multiplyScalar(-this.wheels[i].suspensionDamping); // invert damping force to negate suspension force
-        let tempDamp = dampingForce.clone();
-        dampingForce = this.btVec2;
-        dampingForce.setValue(tempDamp.x, tempDamp.y, tempDamp.z);
-        this.body.applyForce(dampingForce, btWheelPos);
+        
+        // cumuluative suspension force
+        let cumulativeForce = springForce.clone();
+        cumulativeForce.add(dampingForce);
+        this.wheels[i].suspensionForceAtWheel = cumulativeForce.length();
+        // apply total force to wheel
+        totalAppliedForce.setValue(cumulativeForce.x, cumulativeForce.y, cumulativeForce.z);
+        this.body.applyForce(totalAppliedForce, btWheelPos);
 
         // setup drawing of debug lines
         if (this.drawDebug) {
           this.wheels[i].springPoints = [new THREE.Vector3(this.wheels[i].target.x, this.wheels[i].target.y, this.wheels[i].target.z)];
-          let springDestination = new THREE.Vector3(this.wheels[i].target.x, this.wheels[i].target.y, this.wheels[i].target.z);
-          springDestination.add(new THREE.Vector3(springForce.x(), springForce.y(), springForce.z()).multiplyScalar(0.25)); // add spring force
-          springDestination.add(new THREE.Vector3(dampingForce.x(), dampingForce.y(), dampingForce.z()).multiplyScalar(0.25)); // add damping force
+          let destination = new THREE.Vector3(this.wheels[i].target.x, this.wheels[i].target.y, this.wheels[i].target.z);
+          destination.add(cumulativeForce.multiplyScalar(0.25));
           // add it to our line points
-          this.wheels[i].springPoints.push(springDestination);
+          this.wheels[i].springPoints.push(destination);
           // setup our geometry
           this.wheels[i].springGeometry.setFromPoints(this.wheels[i].springPoints);
         } else {
@@ -323,6 +329,23 @@ class VehicleBody {
     }
   }
 
+  // use suspension forces to calculate weight transfer at wheel
+  calcWeightTransfer() {
+    let totalForce = 0;
+    for (let i = 0; i < this.wheels.length; i++) {
+      totalForce += this.wheels[i].suspensionForceAtWheel;
+    }
+    console.log('total force:', totalForce);
+
+    // iterate through wheels and apply weight as percentage of force applied
+    for (let i = 0; i < this.wheels.length; i++) {
+      let percentage = this.wheels[i].suspensionForceAtWheel / totalForce;
+      this.wheels[i].weightAtWheel = this.mass * percentage;
+      console.log('wheel', i + ":", this.wheels[i].weightAtWheel);
+    }
+  }
+
+  // determine accelerating / steering forces
   calcSteering() {
     // get our transform
     let transform = this.getTransform();
@@ -372,7 +395,7 @@ class VehicleBody {
       let percentageSlip = slipVelocity.length();
       percentageSlip /= velocity.length();
       this.wheels[i].slip = 1 - slipCurve.getValueAtPos(percentageSlip); // replace with lookup curve
-      slipVelocity.multiplyScalar(this.wheels[i].slip);
+      slipVelocity.multiplyScalar(this.wheels[i].slip * this.wheels[i].weightAtWheel);
       let slipForce = this.btVec0;
       slipForce.setValue(-slipVelocity.x, 0, -slipVelocity.z);
 
@@ -743,7 +766,7 @@ boxBump.receiveShadow = true;
 // create our testing vehicle
 const vehicleGroup = new THREE.Group();
 const box = new THREE.Mesh(
-  new THREE.BoxGeometry(9, 6, 24),
+  new THREE.BoxGeometry(12, 6, 24),
   new THREE.MeshStandardMaterial({
     color: 0x408080
   }));
@@ -754,13 +777,13 @@ vehicleGroup.position.set(0, 20, 0);
 // setup rigidbody for this box
 const vehicleBox = new VehicleBody(vehicleGroup);
 vehicleBox.centerOfGravity.set(0, -2.2, 0); // apply an offset to the center of gravity
-vehicleBox.createBox(10, vehicleGroup.position, vehicleGroup.quaternion, new THREE.Vector3(9, 6, 24));
+vehicleBox.createBox(10, vehicleGroup.position, vehicleGroup.quaternion, new THREE.Vector3(12, 6, 24));
 // create wheels by using an array of relative wheel positions
 vehicleBox.createWheels([
-  { pos: new THREE.Vector3(vehicleBox.size.x / 2 + 1, -vehicleBox.size.y / 1.5, vehicleBox.size.z / 3), suspensionStrength: 80, suspensionDamping: 12, wheelRadius: 2.5, powered: false, steering: true, brakes: true },
-  { pos: new THREE.Vector3(-vehicleBox.size.x / 2 - 1, -vehicleBox.size.y / 1.5, vehicleBox.size.z / 3), suspensionStrength: 80, suspensionDamping: 12, wheelRadius: 2.5, powered: false, steering: true, brakes: true },
-  { pos: new THREE.Vector3(vehicleBox.size.x / 2 + 1, -vehicleBox.size.y / 1.5, -vehicleBox.size.z / 3), suspensionStrength: 40, suspensionDamping: 6, wheelRadius: 4, powered: true, steering: false, brakes: true },
-  { pos: new THREE.Vector3(-vehicleBox.size.x / 2 - 1, -vehicleBox.size.y / 1.5, -vehicleBox.size.z / 3), suspensionStrength: 40, suspensionDamping: 6, wheelRadius: 4, powered: true, steering: false, brakes: true }
+  { pos: new THREE.Vector3(vehicleBox.size.x / 2 + 1, -vehicleBox.size.y / 1.5, vehicleBox.size.z / 3), suspensionStrength: 80, suspensionDamping: 12, wheelRadius: 3, powered: false, steering: true, brakes: true },
+  { pos: new THREE.Vector3(-vehicleBox.size.x / 2 - 1, -vehicleBox.size.y / 1.5, vehicleBox.size.z / 3), suspensionStrength: 80, suspensionDamping: 12, wheelRadius: 3, powered: false, steering: true, brakes: true },
+  { pos: new THREE.Vector3(vehicleBox.size.x / 2 + 1, -vehicleBox.size.y / 1.5, -vehicleBox.size.z / 3), suspensionStrength: 40, suspensionDamping: 6, wheelRadius: 4.2, powered: true, steering: false, brakes: true },
+  { pos: new THREE.Vector3(-vehicleBox.size.x / 2 - 1, -vehicleBox.size.y / 1.5, -vehicleBox.size.z / 3), suspensionStrength: 40, suspensionDamping: 6, wheelRadius: 4.2, powered: true, steering: false, brakes: true }
 ]);
 vehicleBox.body.setFriction(0.85); // car will stop moving if body touches anything
 vehicleBox.body.setRestitution(0);
@@ -779,6 +802,7 @@ function step(delta) {
   // update our vehicle
   vehicleBox.updateEngine();
   vehicleBox.updateWheels();
+  vehicleBox.calcWeightTransfer();
   vehicleBox.calcSteering();
   vehicleBox.calcSuspension();
   vehicleBox.applyDrag();
