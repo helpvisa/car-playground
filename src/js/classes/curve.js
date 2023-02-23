@@ -59,7 +59,7 @@ class Curve { // should only take values between 0 and 1 on both axes
 let tirePoints = [
   {
     x: 0,
-    y: 0
+    y: 0.05
   },
   {
     x: 0.05,
@@ -83,7 +83,43 @@ let tirePoints = [
   }
 ]
 
+let torquePoints = [
+  {
+    x: 0,
+    y: 50,
+  },
+  {
+    x: 0.33,
+    y: 135,
+  },
+  {
+    x: 0.5,
+    y: 195,
+  },
+  {
+    x: 0.67,
+    y: 240,
+  },
+  {
+    x: 0.83,
+    y: 335,
+  },
+  {
+    x: 0.92,
+    y: 345,
+  },
+  {
+    x: 0.96,
+    y: 325
+  },
+  {
+    x: 1,
+    y: 0,
+  }
+]
+
 const slipCurve = new Curve(tirePoints);
+const torqueCurve = new Curve(torquePoints);
 
 // plot to chart.js
 const context = document.getElementById('curveChart');
@@ -91,8 +127,8 @@ new Chart(context, {
   type: 'line',
   data: {
     datasets: [{
-      label: 'Tire Slip',
-      data: tirePoints,
+      label: 'Torque',
+      data: torquePoints,
       fill: false,
       borderColor: 'rgb(255, 0, 0)',
       tension: 0
