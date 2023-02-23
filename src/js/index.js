@@ -64,8 +64,9 @@ class VehicleBody {
     this.currentRPM = 0;
     this.maxRPM = 6000;
     this.minRPM = 1000;
-    this.currentGear = 1;
-    this.gearRatio = 2.66; // current gear ratio; set to constant for testing
+    this.currentGear = 1; // 0 is reverse
+    this.gears = [-2.9, 2.66, 1.78, 1.3, 1.0, 0.74, 0.5];
+    this.gearRatio = this.gears[this.currentGear]; // current gear ratio; set to constant for testing
     this.finalDrive = 3.42; // differential drive
     this.transmissionLoss = 0.7; // transmission efficiency
     this.currentSpeed = 0;
@@ -201,6 +202,7 @@ class VehicleBody {
         brakingTorque: 0,
         angularAcceleration: 0,
         angularVelocity: 0,
+        appliedAcceleration: 0,
         mesh: new THREE.Mesh(
           new THREE.CylinderGeometry(wheelArray[i].wheelRadius, wheelArray[i].wheelRadius, 0.225),
           new THREE.MeshStandardMaterial({
@@ -250,16 +252,33 @@ class VehicleBody {
   updateEngine(delta) {
     // get input to drive engine
     if (input.accel) {
-      this.throttle += 1 * delta;
+      this.throttle += 2 * delta;// * delta;
     } else {
-      this.throttle -= 2 * delta;
+      this.throttle -= 4 * delta;
     }
     this.throttle = Math.max(0, Math.min(1, this.throttle));
-
+    // get brakes
     if (input.brake) {
       this.brake = 1;
     } else {
       this.brake = 0;
+    }
+    // change gears
+    if (input.shiftUp) {
+      this.currentGear += 1;
+      if (this.currentGear > this.gears.length - 1) {
+        this.currentGear = this.gears.length - 1;
+      }
+      this.gearRatio = this.gears[this.currentGear];
+      input.shiftUp = false;
+    }
+    if (input.shiftDown) {
+      this.currentGear -= 1;
+      if (this.currentGear < 0) {
+        this.currentGear = 0;
+      }
+      this.gearRatio = this.gears[this.currentGear];
+      input.shiftDown = false;
     }
 
     // get our engine rpm back from the wheel rpm
@@ -275,7 +294,7 @@ class VehicleBody {
     }
     totalWheelRPM /= numPoweredWheels;
     averageSpeed /= numPoweredWheels;
-    this.currentRPM = totalWheelRPM * this.gearRatio * this.finalDrive;
+    this.currentRPM = totalWheelRPM * this.gearRatio * this.finalDrive * this.transmissionLoss;
 
     // clamp RPM values
     this.currentRPM = Math.max(this.minRPM, Math.min(this.maxRPM, this.currentRPM));
@@ -284,7 +303,31 @@ class VehicleBody {
     this.appliedTorque = torqueCurve.getValueAtPos((this.currentRPM) / this.maxRPM) * this.throttle;
 
     // update OSD
-    document.getElementById("sub-info").textContent = "Engine RPM: " + parseInt(this.currentRPM) + "  //  " + parseInt(averageSpeed * 3.6) + ' kmh';
+    let gearText = "1st";
+    switch(this.currentGear) {
+      case 0:
+        gearText = 'Reverse';
+        break;
+      case 1:
+        gearText = '1st';
+        break;
+      case 2:
+        gearText = '2nd';
+        break;
+      case 3:
+        gearText = '3rd';
+        break;
+      case 4:
+        gearText = '4th';
+        break;
+      case 5:
+        gearText = '5th';
+        break;
+      case 6:
+        gearText = '6th';
+        break;
+    }
+    document.getElementById("sub-info").textContent = gearText + " Gear // " + "Engine RPM: " + parseInt(this.currentRPM) + " // " + parseInt(Math.abs(averageSpeed * 3.6)) + ' kmh';
   }
 
   // update the position of the wheels
@@ -342,20 +385,19 @@ class VehicleBody {
         / this.wheels[i].previousForwardVelocity.length();
         slipRatio = Math.max(-1, Math.min(1, slipRatio));
       }
-      let grip = 1 - slipCurve.getValueAtPos(slipRatio); // check slip curve
-      grip *= Math.sign(slipRatio);
+      let grip = slipCurve.getValueAtPos(slipRatio); // check slip curve
 
       // calculate wheel acceleration
-      this.wheels[i].angularAcceleration = (engineAccel - (engineAccel * grip) + rollingResistance) / wheelInertia;
+      this.wheels[i].angularAcceleration = (engineAccel - Math.max(-this.wheels[i].maxDriveForce, Math.min((engineAccel * grip), this.wheels[i].maxDriveForce)) + rollingResistance) / wheelInertia;
       this.wheels[i].angularVelocity += this.wheels[i].angularAcceleration * delta;
-      // this.wheels[i].appliedAcceleration = (engineAccel - (engineAccel * grip) + rollingResistance) / wheelInertia;
-      console.log('accel:', this.wheels[i].angularAcceleration);
-      console.log('velo:', this.wheels[i].angularVelocity);
-      console.log('rpm:', this.currentRPM);
-      console.log('slip:', slipRatio);
-      // console.log('velo:', this.wheels[i].angularVelocity);
+      this.wheels[i].appliedAcceleration = (Math.max(-this.wheels[i].maxDriveForce, Math.min((engineAccel * grip), this.wheels[i].maxDriveForce)) + rollingResistance) / this.wheels[i].wheelRadius;
       // console.log('accel:', this.wheels[i].angularAcceleration);
-      // console.log('engine rpm:', this.currentRPM, this.appliedTorque);
+      // console.log('velo:', this.wheels[i].angularVelocity);
+      // console.log('rpm:', this.currentRPM);
+      // console.log('slip:', slipRatio);
+      // console.log('velo:', this.wheels[i].angularVelocity);
+      // console.log('accel torque:', engineAccel);
+      // console.log('max torque:', this.wheels[i].maxDriveForce);
 
       // compute debug bounding spheres
       if (this.drawDebug) {
@@ -509,7 +551,7 @@ class VehicleBody {
       slipForce.setValue(-slipVelocity.x, 0, -slipVelocity.z);
 
       // apply acceleration force and determine current wheel grip
-      let acceleration = this.wheels[i].angularAcceleration * this.wheels[i].wheelRadius;
+      let acceleration = this.wheels[i].appliedAcceleration;
 
       let accelForce = this.btVec2;
       accelForce.setValue(
@@ -679,8 +721,11 @@ document.addEventListener('keydown', (e) => {
     case "w":
       input.accel = true;
       break;
-    case "s":
-      input.decel = true;
+    case "j":
+      input.shiftDown = true;
+      break;
+    case "k":
+      input.shiftUp = true;
       break;
     case "a":
       input.left = true;
@@ -699,8 +744,11 @@ document.addEventListener('keyup', (e) => {
     case "w":
       input.accel = false;
       break;
-    case "s":
-      input.decel = false;
+    case "j":
+      input.shiftDown = false;
+      break;
+    case "k":
+      input.shiftUp = false;
       break;
     case "a":
       input.left = false;

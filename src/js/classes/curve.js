@@ -115,7 +115,7 @@ let torquePoints = [
   },
   {
     x: 1,
-    y: 325,
+    y: 0,
   }
 ]
 
