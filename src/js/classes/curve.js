@@ -11,6 +11,7 @@ class Curve { // should only take values between 0 and 1 on both axes
 
   // return a lerp'd value at a position on the curve
   getValueAtPos(p = 0) {
+    p = Math.abs(p);
     // clamp p between 0 and 1
     p = Math.max(Math.min(1, p), 0);
 
@@ -59,7 +60,7 @@ class Curve { // should only take values between 0 and 1 on both axes
 let tirePoints = [
   {
     x: 0,
-    y: 0.05
+    y: 0,
   },
   {
     x: 0.05,
@@ -114,7 +115,7 @@ let torquePoints = [
   },
   {
     x: 1,
-    y: 0,
+    y: 325,
   }
 ]
 
@@ -127,8 +128,8 @@ new Chart(context, {
   type: 'line',
   data: {
     datasets: [{
-      label: 'Torque',
-      data: torquePoints,
+      label: 'Slip',
+      data: tirePoints,
       fill: false,
       borderColor: 'rgb(255, 0, 0)',
       tension: 0
