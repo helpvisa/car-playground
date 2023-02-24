@@ -39,6 +39,17 @@
   margin: 4px;
 }
 
+#controls .accelerator {
+  background-color: greenyellow;
+}
+#controls .brakes {
+  color: white;
+  background-color: red;
+}
+#controls .steering {
+  background-color: lightblue;
+}
+
 .toggle {
   -webkit-touch-callout: none;
   -webkit-user-select: none;

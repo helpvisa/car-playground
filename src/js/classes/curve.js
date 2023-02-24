@@ -114,13 +114,45 @@ let torquePoints = [
     y: 325
   },
   {
+    x: 0.98,
+    y: 325,
+  },
+  {
     x: 1,
-    y: 0,
+    y: 0
+  }
+]
+
+let pacejkaPoints = [
+  {
+    x: 0,
+    y: 0
+  },
+  {
+    x: 0.012,
+    y: 1
+  },
+  {
+    x: 0.25,
+    y: 0.95
+  },
+  {
+    x: 0.5,
+    y: 0.9
+  },
+  {
+    x: 0.75,
+    y: 0.85
+  },
+  {
+    x: 1,
+    y: 0.8
   }
 ]
 
 const slipCurve = new Curve(tirePoints);
 const torqueCurve = new Curve(torquePoints);
+const pacejkaCurve = new Curve(pacejkaPoints);
 
 // plot to chart.js
 const context = document.getElementById('curveChart');

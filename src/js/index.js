@@ -17,6 +17,10 @@ const checker = new THREE.TextureLoader().load("./src/textures/wheel_test_tex.jp
 checker.wrapS = THREE.RepeatWrapping;
 checker.wrapT = THREE.RepeatWrapping;
 checker.repeat.set(100, 100);
+const wheelTex = new THREE.TextureLoader().load("./src/textures/checker_02.jpg");
+wheelTex.wrapS = THREE.RepeatWrapping;
+wheelTex.wrapT = THREE.RepeatWrapping;
+wheelTex.repeat.set(1, 1);
 
 // set up a temp ammo vector
 const tempTrans0 = new Ammo.btTransform();
@@ -74,6 +78,9 @@ class VehicleBody {
     this.brake = 0;
     this.brakingPower = 5000;
     this.appliedTorque = 0;
+
+    // graphical bools
+    this.appliedSteerAngle = false;
 
     // setup debug line materials
     this.drawDebug = true;
@@ -206,7 +213,8 @@ class VehicleBody {
         mesh: new THREE.Mesh(
           new THREE.CylinderGeometry(wheelArray[i].wheelRadius, wheelArray[i].wheelRadius, 0.225),
           new THREE.MeshStandardMaterial({
-          color: 0x404040
+          color: 0xFFFFFF,
+          map: wheelTex,
         })),
         // setup debug lines
         // setup geometry rendering
@@ -252,16 +260,16 @@ class VehicleBody {
   updateEngine(delta) {
     // get input to drive engine
     if (input.accel) {
-      this.throttle += 2 * delta;
+      this.throttle += 1 * delta;
     } else {
-      this.throttle -= 4 * delta;
+      this.throttle -= 2 * delta;
     }
     this.throttle = Math.max(0, Math.min(1, this.throttle));
     // get brakes
     if (input.brake) {
-      this.brake += 3 * delta;
+      this.brake += 2 * delta;
     } else {
-      this.brake -= 6 * delta;
+      this.brake -= 4 * delta;
     }
     this.brake = Math.max(0, Math.min(1, this.brake));
 
@@ -290,7 +298,7 @@ class VehicleBody {
     for (let i = 0; i < this.wheels.length; i++) {
       if (this.wheels[i].powered) {
         numPoweredWheels += 1;
-        averageSpeed += this.wheels[i].angularVelocity * this.wheels[i].wheelRadius;
+        averageSpeed += this.wheels[i].angularVelocity / this.wheels[i].wheelRadius;
         totalWheelRPM += this.wheels[i].angularVelocity * 60 / 2*Math.PI;
       }
     }
@@ -398,16 +406,17 @@ class VehicleBody {
       let slipRatio = 0;
       if (this.wheels[i].previousForwardVelocity.length() !== 0) {
         // calculate slip ratio based on torque applied by engine / braking
-        slipRatio = ((this.wheels[i].angularVelocity + ((engineAccel + brakingAccel + rollingResistance) / wheelInertia)) * this.wheels[i].wheelRadius)
-        / this.wheels[i].previousForwardVelocity.length();
+        slipRatio = ((this.wheels[i].angularVelocity + (engineAccel + brakingAccel) * delta) * this.wheels[i].wheelRadius - this.wheels[i].previousForwardVelocity.length())
+        / (this.wheels[i].angularVelocity + (engineAccel + brakingAccel) * delta) * this.wheels[i].wheelRadius;
         slipRatio = Math.max(-1, Math.min(1, slipRatio));
+        // console.log(slipRatio);
       }
-      let grip = slipCurve.getValueAtPos(slipRatio); // check slip curve
+      let grip = pacejkaCurve.getValueAtPos(slipRatio / 2); // check slip curve
 
       // calculate wheel acceleration
-      this.wheels[i].angularAcceleration = (engineAccel - Math.max(-this.wheels[i].maxDriveForce, Math.min(((engineAccel + brakingAccel) * grip), this.wheels[i].maxDriveForce)) + rollingResistance) / wheelInertia;
+      this.wheels[i].angularAcceleration = (engineAccel + rollingResistance) / wheelInertia;
       this.wheels[i].angularVelocity += this.wheels[i].angularAcceleration * delta;
-      this.wheels[i].appliedAcceleration = (Math.max(-this.wheels[i].maxDriveForce, Math.min(((engineAccel + brakingAccel) * grip), this.wheels[i].maxDriveForce)) + rollingResistance) / this.wheels[i].wheelRadius;
+      this.wheels[i].appliedAcceleration = (Math.max(-this.wheels[i].maxDriveForce, Math.min((engineAccel + brakingAccel) * grip, this.wheels[i].maxDriveForce)) + rollingResistance) / this.wheels[i].wheelRadius;
       // console.log('accel:', this.wheels[i].angularAcceleration);
       // console.log('velo:', this.wheels[i].angularVelocity);
       // console.log('rpm:', this.currentRPM);
@@ -415,6 +424,11 @@ class VehicleBody {
       // console.log('velo:', this.wheels[i].angularVelocity);
       // console.log('accel torque:', engineAccel);
       // console.log('max torque:', this.wheels[i].maxDriveForce);
+
+      // rotate the wheel mesh
+      if (slipRatio !== -1) {
+        this.wheels[i].mesh.rotation.x += (this.wheels[i].angularVelocity) * delta / this.wheels[i].wheelRadius;
+      }
 
       // compute debug bounding spheres
       if (this.drawDebug) {
@@ -526,26 +540,20 @@ class VehicleBody {
       if (this.wheels[i].steering) {
         // first decide the steering direction
         let wheelTarget = new THREE.Euler(this.wheels[i].obj.rotation.x, 0, this.wheels[i].obj.rotation.z);
-        let meshTarget = new THREE.Euler(this.wheels[i].mesh.rotation.x, 0, this.wheels[i].mesh.rotation.z)
 
         // default rest position (no angle)
         if (input.right) {
           wheelTarget.y -= 35 * Math.PI/180;
-          meshTarget.y -= 35 * Math.PI/180;
         }
         if (input.left) {
           wheelTarget.y += 35 * Math.PI/180;
-          meshTarget.y += 35 * Math.PI/180;
         }
 
         let targetQuatWheel = new THREE.Quaternion();
-        let targetQuatMesh = new THREE.Quaternion();
         targetQuatWheel.setFromEuler(wheelTarget);
-        targetQuatMesh.setFromEuler(meshTarget);
 
         // set wheel's rotation
         this.wheels[i].obj.quaternion.rotateTowards(targetQuatWheel, 1.2 * Math.PI/180);
-        // this.wheels[i].mesh.quaternion.rotateTowards(targetQuatMesh, 0.5 * Math.PI/180);
       }
 
       // get velocity
@@ -562,7 +570,7 @@ class VehicleBody {
       if (forwardVelocity.length() !== 0) {
         slipAngle = Math.atan((slipVelocity.length() + slipVelocity.dot(forwardVelocity)) / forwardVelocity.length());
       }
-      this.wheels[i].slip = slipCurve.getValueAtPos(slipAngle); // replace with lookup curve
+      this.wheels[i].slip = pacejkaCurve.getValueAtPos(slipAngle / 2); // replace with lookup curve
       slipVelocity.normalize();
       slipVelocity.multiplyScalar((this.wheels[i].slip * this.wheels[i].maxDriveForce) / this.wheels[i].wheelRadius);
       if (forwardVelocity.length() < 1) {
@@ -600,7 +608,7 @@ class VehicleBody {
         // get forward force and make a line w it to demonstrate acceleration
         let pos = this.wheels[i].target.clone();
         let accelForcePoint = pos.clone();
-        if (this.wheels[i].powered) {
+        if (this.wheels[i].powered && this.wheels[i].isGrounded) {
           accelForcePoint.set(accelForce.x(), accelForce.y(), accelForce.z());
           accelForcePoint.multiplyScalar(1 / this.mass).add(pos);
         }
@@ -662,20 +670,28 @@ let controlDiv = document.createElement("div");
 controlDiv.id = "controls";
 let movementDiv = document.createElement("div");
 let steerDiv = document.createElement("div");
+let shiftDiv = document.createElement("div");
 
 let accEl = document.createElement("button");
 accEl.textContent = "accel";
-let decEl = document.createElement("button");
-decEl.textContent = "rev";
+accEl.className = "accelerator";
 let brakEl = document.createElement("button");
 brakEl.textContent = "brk";
+brakEl.className = "brakes";
+let shiftDownEl = document.createElement("button");
+shiftDownEl.textContent = "dwn";
+let shiftUpEl = document.createElement("button");
+shiftUpEl.textContent = "up";
 let steerLEl = document.createElement("button");
 steerLEl.textContent = "left";
+steerLEl.className = "steering";
 let steerREl = document.createElement("button");
 steerREl.textContent = "right";
-movementDiv.append(accEl, decEl, brakEl);
+steerREl.className = "steering"
+movementDiv.append(accEl, brakEl);
 steerDiv.append(steerLEl, steerREl);
-controlDiv.append(movementDiv, steerDiv);
+shiftDiv.append(shiftDownEl, shiftUpEl);
+controlDiv.append(movementDiv, shiftDiv, steerDiv);
 
 // add toggles
 let toggleDebugEl = document.createElement("button");
@@ -761,8 +777,11 @@ document.addEventListener('keyup', (e) => {
 accEl.addEventListener("touchstart", () => {
   input.accel = true;
 });
-decEl.addEventListener("touchstart", () => {
-  input.decel = true;
+shiftDownEl.addEventListener("touchstart", () => {
+  input.shiftDown = true;
+});
+shiftUpEl.addEventListener("touchstart", () => {
+  input.shiftUp = true;
 });
 brakEl.addEventListener("touchstart", () => {
   input.brake = true;
@@ -777,8 +796,11 @@ steerREl.addEventListener("touchstart", () => {
 accEl.addEventListener("mousedown", () => {
   input.accel = true;
 });
-decEl.addEventListener("mousedown", () => {
-  input.decel = true;
+shiftDownEl.addEventListener("mousedown", () => {
+  input.shiftDown = true;
+});
+shiftUpEl.addEventListener("mousedown", () => {
+  input.shiftUp = true;
 });
 brakEl.addEventListener("mousedown", () => {
   input.brake = true;
@@ -795,8 +817,11 @@ steerREl.addEventListener("mousedown", () => {
 accEl.addEventListener("touchend", () => {
   input.accel = false;
 });
-decEl.addEventListener("touchend", () => {
-  input.decel = false;
+shiftDownEl.addEventListener("touchend", () => {
+  input.shiftDown = false;
+});
+shiftUpEl.addEventListener("touchend", () => {
+  input.shiftUp = false;
 });
 brakEl.addEventListener("touchend", () => {
   input.brake = false;
@@ -811,8 +836,11 @@ steerREl.addEventListener("touchend", () => {
 accEl.addEventListener("mouseup", () => {
   input.accel = false;
 });
-decEl.addEventListener("mouseup", () => {
-  input.decel = false;
+shiftDownEl.addEventListener("mouseup", () => {
+  input.shiftDown = false;
+});
+shiftUpEl.addEventListener("mouseup", () => {
+  input.shiftUp = false;
 });
 brakEl.addEventListener("mouseup", () => {
   input.brake = false;
@@ -891,13 +919,13 @@ vehicleGroup.add(box);
 vehicleGroup.position.set(0, 5, 0);
 // setup rigidbody for this box
 const vehicleBox = new VehicleBody(vehicleGroup);
-vehicleBox.createBox(1000, vehicleGroup.position, vehicleGroup.quaternion, new THREE.Vector3(1.8, 1.6, 4), centerOfGravity);
+vehicleBox.createBox(2000, vehicleGroup.position, vehicleGroup.quaternion, new THREE.Vector3(1.8, 1.6, 4), centerOfGravity);
 // create wheels by using an array of relative wheel positions
 vehicleBox.createWheels([
-  { pos: new THREE.Vector3(vehicleBox.size.x / 2, -vehicleBox.size.y / 1.5, vehicleBox.size.z / 3), suspensionStrength: 12000, suspensionDamping: 1000, wheelRadius: 0.5, powered: false, steering: true, brakes: true },
-  { pos: new THREE.Vector3(-vehicleBox.size.x / 2, -vehicleBox.size.y / 1.5, vehicleBox.size.z / 3), suspensionStrength: 12000, suspensionDamping: 1000, wheelRadius: 0.5, powered: false, steering: true, brakes: true },
-  { pos: new THREE.Vector3(vehicleBox.size.x / 2, -vehicleBox.size.y / 1.5, -vehicleBox.size.z / 3), suspensionStrength: 12000, suspensionDamping: 1000, wheelRadius: 0.5, powered: true, steering: false, brakes: true },
-  { pos: new THREE.Vector3(-vehicleBox.size.x / 2, -vehicleBox.size.y / 1.5, -vehicleBox.size.z / 3), suspensionStrength: 12000, suspensionDamping: 1000, wheelRadius: 0.5, powered: true, steering: false, brakes: true }
+  { pos: new THREE.Vector3(vehicleBox.size.x / 2, -vehicleBox.size.y / 1.5, vehicleBox.size.z / 3), suspensionStrength: 24000, suspensionDamping: 2000, wheelRadius: 0.5, powered: false, steering: true, brakes: true },
+  { pos: new THREE.Vector3(-vehicleBox.size.x / 2, -vehicleBox.size.y / 1.5, vehicleBox.size.z / 3), suspensionStrength: 24000, suspensionDamping: 2000, wheelRadius: 0.5, powered: false, steering: true, brakes: true },
+  { pos: new THREE.Vector3(vehicleBox.size.x / 2, -vehicleBox.size.y / 1.5, -vehicleBox.size.z / 3), suspensionStrength: 24000, suspensionDamping: 2000, wheelRadius: 0.5, powered: true, steering: false, brakes: true },
+  { pos: new THREE.Vector3(-vehicleBox.size.x / 2, -vehicleBox.size.y / 1.5, -vehicleBox.size.z / 3), suspensionStrength: 24000, suspensionDamping: 2000, wheelRadius: 0.5, powered: true, steering: false, brakes: true }
 ]);
 vehicleBox.body.setFriction(0.9); // car will stop moving if body touches anything
 vehicleBox.body.setRestitution(0);
