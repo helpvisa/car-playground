@@ -2,6 +2,11 @@
   margin: 0px;
   padding: 0px;
   background-color: rgb(65, 65, 65);
+  /* disable text highlighting in general (an issue in chrome mobile) */
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  -ms-user-select: none;
+  user-select: none;
 }
 
 #canvas-body {
