@@ -252,17 +252,19 @@ class VehicleBody {
   updateEngine(delta) {
     // get input to drive engine
     if (input.accel) {
-      this.throttle += 2 * delta;// * delta;
+      this.throttle += 2 * delta;
     } else {
       this.throttle -= 4 * delta;
     }
     this.throttle = Math.max(0, Math.min(1, this.throttle));
     // get brakes
     if (input.brake) {
-      this.brake = 1;
+      this.brake += 3 * delta;
     } else {
-      this.brake = 0;
+      this.brake -= 6 * delta;
     }
+    this.brake = Math.max(0, Math.min(1, this.brake));
+
     // change gears
     if (input.shiftUp) {
       this.currentGear += 1;
@@ -376,21 +378,36 @@ class VehicleBody {
         rollingResistance *= -1;
       }
       // calculate acceleration force from engine
-      let engineAccel = (this.appliedTorque * this.gearRatio * this.finalDrive * this.transmissionLoss) // is number of powered wheels
+      let engineAccel = 0;
+      if (this.wheels[i].powered) {
+        engineAccel = (this.appliedTorque * this.gearRatio * this.finalDrive * this.transmissionLoss) // is number of powered wheels
+      }
+      // calculate braking force
+      let brakingAccel = 0;
+      if (this.wheels[i].brakes) {
+        brakingAccel = (this.brakingPower * this.brake);
+        if (this.wheels[i].angularVelocity > 0) {
+          brakingAccel *= -1;
+        }
+
+        if (Math.abs(this.wheels[i].angularVelocity) < 0.1) {
+          brakingAccel = this.wheels[i].angularVelocity * wheelInertia;
+        }
+      }
 
       let slipRatio = 0;
       if (this.wheels[i].previousForwardVelocity.length() !== 0) {
         // calculate slip ratio based on torque applied by engine / braking
-        slipRatio = ((this.wheels[i].angularVelocity + ((engineAccel + rollingResistance) / wheelInertia)) * this.wheels[i].wheelRadius)
+        slipRatio = ((this.wheels[i].angularVelocity + ((engineAccel + brakingAccel + rollingResistance) / wheelInertia)) * this.wheels[i].wheelRadius)
         / this.wheels[i].previousForwardVelocity.length();
         slipRatio = Math.max(-1, Math.min(1, slipRatio));
       }
       let grip = slipCurve.getValueAtPos(slipRatio); // check slip curve
 
       // calculate wheel acceleration
-      this.wheels[i].angularAcceleration = (engineAccel - Math.max(-this.wheels[i].maxDriveForce, Math.min((engineAccel * grip), this.wheels[i].maxDriveForce)) + rollingResistance) / wheelInertia;
+      this.wheels[i].angularAcceleration = (engineAccel - Math.max(-this.wheels[i].maxDriveForce, Math.min(((engineAccel + brakingAccel) * grip), this.wheels[i].maxDriveForce)) + rollingResistance) / wheelInertia;
       this.wheels[i].angularVelocity += this.wheels[i].angularAcceleration * delta;
-      this.wheels[i].appliedAcceleration = (Math.max(-this.wheels[i].maxDriveForce, Math.min((engineAccel * grip), this.wheels[i].maxDriveForce)) + rollingResistance) / this.wheels[i].wheelRadius;
+      this.wheels[i].appliedAcceleration = (Math.max(-this.wheels[i].maxDriveForce, Math.min(((engineAccel + brakingAccel) * grip), this.wheels[i].maxDriveForce)) + rollingResistance) / this.wheels[i].wheelRadius;
       // console.log('accel:', this.wheels[i].angularAcceleration);
       // console.log('velo:', this.wheels[i].angularVelocity);
       // console.log('rpm:', this.currentRPM);
@@ -513,12 +530,12 @@ class VehicleBody {
 
         // default rest position (no angle)
         if (input.right) {
-          wheelTarget.y -= 15 * Math.PI/180;
-          meshTarget.y -= 15 * Math.PI/180;
+          wheelTarget.y -= 35 * Math.PI/180;
+          meshTarget.y -= 35 * Math.PI/180;
         }
         if (input.left) {
-          wheelTarget.y += 15 * Math.PI/180;
-          meshTarget.y += 15 * Math.PI/180;
+          wheelTarget.y += 35 * Math.PI/180;
+          meshTarget.y += 35 * Math.PI/180;
         }
 
         let targetQuatWheel = new THREE.Quaternion();
@@ -527,8 +544,8 @@ class VehicleBody {
         targetQuatMesh.setFromEuler(meshTarget);
 
         // set wheel's rotation
-        this.wheels[i].obj.quaternion.rotateTowards(targetQuatWheel, 0.5 * Math.PI/180);
-        this.wheels[i].mesh.quaternion.rotateTowards(targetQuatMesh, 0.5 * Math.PI/180);
+        this.wheels[i].obj.quaternion.rotateTowards(targetQuatWheel, 1.2 * Math.PI/180);
+        // this.wheels[i].mesh.quaternion.rotateTowards(targetQuatMesh, 0.5 * Math.PI/180);
       }
 
       // get velocity
@@ -545,8 +562,12 @@ class VehicleBody {
       if (forwardVelocity.length() !== 0) {
         slipAngle = Math.atan((slipVelocity.length() + slipVelocity.dot(forwardVelocity)) / forwardVelocity.length());
       }
-      this.wheels[i].slip = 1 - slipCurve.getValueAtPos(slipAngle); // replace with lookup curve
-      slipVelocity.multiplyScalar(this.wheels[i].slip * this.wheels[i].weightAtWheel);
+      this.wheels[i].slip = slipCurve.getValueAtPos(slipAngle); // replace with lookup curve
+      slipVelocity.normalize();
+      slipVelocity.multiplyScalar((this.wheels[i].slip * this.wheels[i].maxDriveForce) / this.wheels[i].wheelRadius);
+      if (forwardVelocity.length() < 1) {
+        slipVelocity.normalize().multiplyScalar(1 / delta);
+      }
       let slipForce = this.btVec0;
       slipForce.setValue(-slipVelocity.x, 0, -slipVelocity.z);
 
@@ -560,22 +581,6 @@ class VehicleBody {
         (forwardDir.z * acceleration)
       );
 
-      // determine braking force
-      let brakes = this.brake * this.brakingPower;
-      // get direction
-      let dot = this.wheels[i].previousForwardVelocity.dot(forwardDir);
-      if (dot > 0) {
-        brakes *= -1;
-      }
-      let brakeVelocity = forwardDir.clone();
-      if (this.wheels[i].previousForwardVelocity.length() < 0.5) {
-        brakeVelocity.multiplyScalar(delta * brakes);
-      } else {
-        brakeVelocity.multiplyScalar(brakes);
-      }
-      let brakingForce = this.btVec1;
-      brakingForce.setValue(brakeVelocity.x, brakeVelocity.y, brakeVelocity.z);
-
       // get local location of wheel target
       let localTarget = new THREE.Vector3();
       localTarget = this.wheels[i].target.clone();
@@ -586,28 +591,18 @@ class VehicleBody {
       btWheelPos.setValue(localTarget.x, localTarget.y, localTarget.z);
 
       if (this.wheels[i].isGrounded) {
-        this.body.applyImpulse(slipForce, btWheelPos); // we apply impulse for an immediate velocity change
-        if (this.wheels[i].powered) {
-          this.body.applyForce(accelForce, btWheelPos);
-        }
-        if (this.wheels[i].brakes) {
-          this.body.applyForce(brakingForce, btWheelPos);
-        }
-      } else if (!this.wheels[i].powered) {
-        accelForce.setValue(0, 0, 0); // clear accelForce vector
+        this.body.applyForce(slipForce, btWheelPos); // we apply impulse for an immediate velocity change
+        this.body.applyForce(accelForce, btWheelPos);
       }
 
       // setup drawing of debug lines
       if (this.drawDebug) {
         // get forward force and make a line w it to demonstrate acceleration
         let pos = this.wheels[i].target.clone();
-        let accelForcePoint = new THREE.Vector3(accelForce.x(), accelForce.y(), accelForce.z()).multiplyScalar(1 / this.mass);
-        if (!this.wheels[i].powered || !this.wheels[i].isGrounded) {
-          accelForcePoint = new THREE.Vector3(0, 0, 0);
-        }
-        accelForcePoint.add(pos);
-        if (this.wheels[i].brakes && this.wheels[i].isGrounded) {
-          accelForcePoint.add(new THREE.Vector3(brakingForce.x(), brakingForce.y(), brakingForce.z()).multiplyScalar(0.25 / this.mass));
+        let accelForcePoint = pos.clone();
+        if (this.wheels[i].powered) {
+          accelForcePoint.set(accelForce.x(), accelForce.y(), accelForce.z());
+          accelForcePoint.multiplyScalar(1 / this.mass).add(pos);
         }
 
         // render accel / decel / braking
@@ -617,7 +612,7 @@ class VehicleBody {
         let slipPos = new THREE.Vector3();
         slipPos = pos.clone();
         if (this.wheels[i].isGrounded) {
-          slipPos.add(new THREE.Vector3(slipForce.x(), slipForce.y(), slipForce.z()).multiplyScalar(50 / this.mass));
+          slipPos.add(new THREE.Vector3(slipForce.x(), slipForce.y(), slipForce.z()).multiplyScalar(1 / this.mass));
         }
         this.wheels[i].slipPoints = [pos, slipPos];
         this.wheels[i].slipGeometry.setFromPoints(this.wheels[i].slipPoints);
