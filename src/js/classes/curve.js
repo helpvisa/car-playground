@@ -57,33 +57,6 @@ class Curve { // should only take values between 0 and 1 on both axes
 }
 
 // test curve
-let tirePoints = [
-  {
-    x: 0,
-    y: 0,
-  },
-  {
-    x: 0.05,
-    y: 0.8
-  },
-  {
-    x: 0.1,
-    y: 0.98
-  },
-  {
-    x: 0.15,
-    y: 1
-  },
-  {
-    x: 0.5,
-    y: 0.935
-  },
-  {
-    x: 1,
-    y: 0.9
-  }
-]
-
 let torquePoints = [
   {
     x: 0,
@@ -146,6 +119,7 @@ let pacejkaPoints = [
   }
 ]
 
-const slipCurve = new Curve(tirePoints);
 const torqueCurve = new Curve(torquePoints);
 const pacejkaCurve = new Curve(pacejkaPoints);
+
+module.exports = { torqueCurve, pacejkaCurve };

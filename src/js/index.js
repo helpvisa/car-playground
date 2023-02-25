@@ -1,16 +1,15 @@
 // import our library dependencies
-import * as THREE from 'https://cdnjs.cloudflare.com/ajax/libs/three.js/0.149.0/three.module.min.js';
+const THREE = require('three');
+const CANNON = require('cannon-es');
+// const CannonDebugger = require('cannon-es-debugger');
+const { torqueCurve, pacejkaCurve } = require('./classes/curve.js');
 
-// initialize Ammo, and call our main function
-// our main function executor
-Ammo().then(function(AmmoLib) {
-  Ammo = AmmoLib;
-  main();
+// initialize cannon-es
+const physicsWorld = new CANNON.World({
+  gravity: new CANNON.Vec3(0, -9.8, 0),
 });
 
 /***********************************************************************************/
-// define our main function
-function main() {
 let currentEnginePoint = [{x: 0, y: 0}];
 // load textures
 // load our wheel texture
@@ -23,37 +22,28 @@ wheelTex.wrapS = THREE.RepeatWrapping;
 wheelTex.wrapT = THREE.RepeatWrapping;
 wheelTex.repeat.set(1, 1);
 
-// set up a temp ammo vector
-const tempTrans0 = new Ammo.btTransform();
-
 // define our classes
-// basic 3D box rigidbody
+// vehicle rigidbody
 class RigidBody {
   constructor() {
+
   }
 
   createBox(mass, pos, rot, size) {
-    this.transform = new Ammo.btTransform();
-    this.transform.setIdentity();
-    this.transform.setOrigin(new Ammo.btVector3(pos.x, pos.y, pos.z));
-    this.transform.setRotation(new Ammo.btQuaternion(rot.x, rot.y, rot.z, rot.w));
-    this.motionState = new Ammo.btDefaultMotionState(this.transform);
+    // save mass within object
+    this.mass = mass;
 
-    const btSize = new Ammo.btVector3(size.x * 0.5, size.y * 0.5, size.z * 0.5);
-    this.shape = new Ammo.btBoxShape(btSize);
-    this.shape.setMargin(0.05);
+    this.size = size;
+    const cannonSize = new CANNON.Vec3(size.x * 0.5, size.y * 0.5, size.z * 0.5);
+    this.shape = new CANNON.Box(cannonSize);
+    this.body = new CANNON.Body({mass: mass, shape: this.shape});
 
-    this.inertia = new Ammo.btVector3(0, 0, 0);
-    if (mass > 0) {
-      this.shape.calculateLocalInertia(mass, this.inertia);
-    }
-
-    this.info = new Ammo.btRigidBodyConstructionInfo(
-      mass, this.motionState, this.shape, this.inertia);
-    this.body = new Ammo.btRigidBody(this.info);
+    // add to compound shape with com offset
+    this.body.position.set(pos.x, pos.y, pos.z);
+    this.body.quaternion.set(rot.x, rot.y, rot.z, rot.w);
   }
-};
-// vehicle rigidbody
+}
+
 class VehicleBody {
   constructor(group) {
     // store our parent transform for reuse
@@ -92,13 +82,6 @@ class VehicleBody {
     this.accelMat.depthTest = false;
     this.slipMat = new THREE.LineBasicMaterial({ color: 0xFF0000 });
     this.slipMat.depthTest = false;
-    
-    // setup reusable ammo vectors
-    this.btVec0 = new Ammo.btVector3(0, 0, 0);
-    this.btVec1 = new Ammo.btVector3(0, 0, 0);
-    this.btVec2 = new Ammo.btVector3(0, 0, 0);
-    this.btVec3 = new Ammo.btVector3(0, 0, 0);
-    this.btVec4 = new Ammo.btVector3(0, 0, 0);
   }
 
   // create our ammo.js box collider
@@ -107,46 +90,30 @@ class VehicleBody {
     this.mass = mass;
     this.centerOfGravity = com;
 
-    let localTransform = new Ammo.btTransform();
-    let compoundShape = new Ammo.btCompoundShape();
-    localTransform.setIdentity();
-    localTransform.setOrigin(new Ammo.btVector3(com.x, com.y, com.z));
-
-    this.transform = new Ammo.btTransform();
-    this.transform.setIdentity();
-    this.transform.setOrigin(new Ammo.btVector3(pos.x, pos.y, pos.z));
-    this.transform.setRotation(new Ammo.btQuaternion(rot.x, rot.y, rot.z, rot.w));
-    this.motionState = new Ammo.btDefaultMotionState(this.transform);
+    let compoundShape = new CANNON.Body({mass: mass});
 
     this.size = size;
-    const btSize = new Ammo.btVector3(size.x * 0.5, size.y * 0.5, size.z * 0.5);
-    this.shape = new Ammo.btBoxShape(btSize);
-    this.shape.setMargin(0.05);
+    const cannonSize = new CANNON.Vec3(size.x * 0.5, size.y * 0.5, size.z * 0.5);
+    this.shape = new CANNON.Box(cannonSize);
 
-    // add both to compound shape
-    compoundShape.addChildShape(localTransform, this.shape);
-
-    this.inertia = new Ammo.btVector3(0, 0, 0);
-    if (mass > 0) {
-      compoundShape.calculateLocalInertia(mass, this.inertia);
-    }
-
-    this.info = new Ammo.btRigidBodyConstructionInfo(
-      mass, this.motionState, compoundShape, this.inertia);
-    this.body = new Ammo.btRigidBody(this.info);
+    // add to compound shape with com offset
+    compoundShape.addShape(this.shape, new CANNON.Vec3(com.x, com.y, com.z));
+    compoundShape.position.set(pos.x, pos.y, pos.z);
+    compoundShape.quaternion.set(rot.x, rot.y, rot.z, rot.w);
+    // store as body for reference later
+    this.body = compoundShape;
   }
 
   // get transform position
   getTransform() {
-    let tempTransform = tempTrans0;
-    this.motionState.getWorldTransform(tempTransform);
-    const pos = tempTransform.getOrigin();
-    const rot = tempTransform.getRotation();
+    const pos = this.body.position;
+    const quat = this.body.quaternion;
+    const rot = new THREE.Euler(0, 0, 0);
+    rot.setFromQuaternion(quat);
 
     return {
-      position: new THREE.Vector3(pos.x(), pos.y(), pos.z()),
-      rotation: new THREE.Vector3(rot.x(), rot.y(), rot.z()),
-      root: tempTransform
+      position: new THREE.Vector3(pos.x, pos.y, pos.z),
+      rotation: new THREE.Vector3(rot.x, rot.y, rot.z)
     }
   }
 
@@ -166,10 +133,10 @@ class VehicleBody {
     let centerOfMass = this.getTransform().position;
     let lever = new THREE.Vector3(point.x, point.y, point.z);
     lever.sub(centerOfMass);
-    let velocity = this.body.getLinearVelocity();
-    velocity = new THREE.Vector3(velocity.x(), velocity.y(), velocity.z());
-    let angularVelocity = this.body.getAngularVelocity();
-    angularVelocity = new THREE.Vector3(angularVelocity.x(), angularVelocity.y(), angularVelocity.z());
+    let velocity = this.body.velocity;
+    velocity = new THREE.Vector3(velocity.x, velocity.y, velocity.z);
+    let angularVelocity = this.body.angularVelocity;
+    angularVelocity = new THREE.Vector3(angularVelocity.x, angularVelocity.y, angularVelocity.z);
     velocity.add(angularVelocity.cross(lever)); // this is our velocity at point of wheel
     return velocity;
   }
@@ -468,15 +435,15 @@ class VehicleBody {
     for (let i = 0; i < this.wheels.length; i++) {
       if (this.wheels[i].isGrounded) {
         // cumulative force
-        let totalAppliedForce = this.btVec1;
+        let totalAppliedForce = new CANNON.Vec3();
         // get local position for target
         let localTarget = new THREE.Vector3();
         localTarget = this.wheels[i].target.clone();
         localTarget.sub(transform.position);
 
         // convert his local position into something the physics engine can understand
-        let btWheelPos = this.btVec0;
-        btWheelPos.setValue(localTarget.x, localTarget.y, localTarget.z);
+        let btWheelPos = new CANNON.Vec3();
+        btWheelPos.set(localTarget.x, localTarget.y, localTarget.z);
         let wheelWorldPos = new THREE.Vector3();
         this.wheels[i].obj.getWorldPosition(wheelWorldPos);
 
@@ -485,7 +452,6 @@ class VehicleBody {
 
         // calculate a spring force and apply it
         let springForce = offset.multiplyScalar(this.wheels[i].suspensionStrength);
-        // this.body.applyForce(springForce, btWheelPos);
 
         // calculate a damping force and apply it
         // calculate the velocity at the point of our wheel
@@ -499,7 +465,7 @@ class VehicleBody {
         cumulativeForce.add(dampingForce);
         this.wheels[i].suspensionForceAtWheel = cumulativeForce.length();
         // apply total force to wheel
-        totalAppliedForce.setValue(cumulativeForce.x, cumulativeForce.y, cumulativeForce.z);
+        totalAppliedForce.set(cumulativeForce.x, cumulativeForce.y, cumulativeForce.z);
         this.body.applyForce(totalAppliedForce, btWheelPos);
 
         // setup drawing of debug lines
@@ -592,9 +558,7 @@ class VehicleBody {
       let slipAngle = 1;
       this.wheels[i].slip = pacejkaCurve.getValueAtPos(slipAngle / 20); // replace with lookup curve; 20 degrees = max slip angle
       let appliedSlipForce = 0;
-      if (forwardVelocity.length() > 0.1) {
-        appliedSlipForce = (this.wheels[i].slip * this.wheels[i].maxDriveForce) / this.wheels[i].wheelRadius
-      }
+      appliedSlipForce = (this.wheels[i].slip * this.wheels[i].maxDriveForce) / this.wheels[i].wheelRadius
 
       // calculate max applied force in forward + slip directions based on max allowed drive force at wheel
       // compare magnitude of accel and slip forces then divide by allowed maximum
@@ -608,16 +572,16 @@ class VehicleBody {
 
       // apply acceleration and slip force based on traction circle and determine current wheel grip
       let acceleration = appliedAcceleration;
-      let accelForce = this.btVec2;
-      accelForce.setValue(
+      let accelForce = new CANNON.Vec3();
+      accelForce.set(
         (forwardDir.x * acceleration),
         (forwardDir.y * acceleration),
         (forwardDir.z * acceleration)
       );
       slipVelocity.projectOnVector(slipDir);
       slipVelocity.multiplyScalar(appliedSlipForce);
-      let slipForce = this.btVec0;
-      slipForce.setValue(-slipVelocity.x, 0, -slipVelocity.z);
+      let slipForce = new CANNON.Vec3();
+      slipForce.set(-slipVelocity.x, 0, -slipVelocity.z);
 
       // get local location of wheel target
       let localTarget = new THREE.Vector3();
@@ -625,8 +589,8 @@ class VehicleBody {
       localTarget.sub(transform.position);
 
       // convert it into something the physics engine can understand
-      let btWheelPos = this.btVec3;
-      btWheelPos.setValue(localTarget.x, localTarget.y, localTarget.z);
+      let btWheelPos = new CANNON.Vec3();
+      btWheelPos.set(localTarget.x, localTarget.y, localTarget.z);
 
       if (this.wheels[i].isGrounded) {
         this.body.applyForce(slipForce, btWheelPos); // we apply impulse for an immediate velocity change
@@ -639,7 +603,7 @@ class VehicleBody {
         let pos = this.wheels[i].target.clone();
         let accelForcePoint = pos.clone();
         if (this.wheels[i].powered && this.wheels[i].isGrounded) {
-          accelForcePoint.set(accelForce.x(), accelForce.y(), accelForce.z());
+          accelForcePoint.set(accelForce.x, accelForce.y, accelForce.z);
           accelForcePoint.multiplyScalar(1 / this.mass).add(pos);
         }
 
@@ -650,7 +614,7 @@ class VehicleBody {
         let slipPos = new THREE.Vector3();
         slipPos = pos.clone();
         if (this.wheels[i].isGrounded) {
-          slipPos.add(new THREE.Vector3(slipForce.x(), slipForce.y(), slipForce.z()).multiplyScalar(1 / this.mass));
+          slipPos.add(new THREE.Vector3(slipForce.x, slipForce.y, slipForce.z).multiplyScalar(1 / this.mass));
         }
         this.wheels[i].slipPoints = [pos, slipPos];
         this.wheels[i].slipGeometry.setFromPoints(this.wheels[i].slipPoints);
@@ -664,25 +628,16 @@ class VehicleBody {
   // apply aerodynamic and surface drag
   applyDrag() {
     // calculate aerodynamic drag applied to entire car body
-    let aeroDrag = this.body.getLinearVelocity();
-    aeroDrag = new THREE.Vector3(aeroDrag.x(), aeroDrag.y(), aeroDrag.z()); // convert to three.js vector
+    let aeroDrag = this.body.velocity;
+    aeroDrag = new THREE.Vector3(aeroDrag.x, aeroDrag.y, aeroDrag.z); // convert to three.js vector
     aeroDrag.multiplyScalar(-aeroDrag.length() * 0.01);
-    let dragForce = this.btVec0;
-    dragForce.setValue(aeroDrag.x, aeroDrag.y, aeroDrag.z);
-    this.body.applyForce(dragForce);
+    let dragForce = new CANNON.Vec3();
+    dragForce.set(aeroDrag.x, aeroDrag.y, aeroDrag.z);
+    // this.body.applyForce(dragForce);
   }
 }
 
 /*************************************************************************/
-// initialize ammo.js physics state before initializing our three.js scene
-const collisionConfiguration = new Ammo.btDefaultCollisionConfiguration();
-const dispatcher = new Ammo.btCollisionDispatcher(collisionConfiguration);
-const broadphase = new Ammo.btDbvtBroadphase();
-const solver = new Ammo.btSequentialImpulseConstraintSolver();
-const physicsWorld = new Ammo.btDiscreteDynamicsWorld(
-  dispatcher, broadphase, solver, collisionConfiguration);
-physicsWorld.setGravity(new Ammo.btVector3(0, -9.8, 0));
-
 // construct our world scene and setup three.js
 const threejs = new THREE.WebGLRenderer();
 threejs.shadowMap.enabled = true;
@@ -971,11 +926,10 @@ plane.rotation.x = -Math.PI / 2;
 // setup ground rigidbody
 const rbGround = new RigidBody();
 rbGround.createBox(0, new THREE.Vector3(plane.position.x, plane.position.y, plane.position.z), plane.quaternion, new THREE.Vector3(10000, 10000, 0.01));
-rbGround.body.setRestitution(0.0);
-physicsWorld.addRigidBody(rbGround.body);
+physicsWorld.addBody(rbGround.body);
 
 // create our testing vehicle
-let centerOfGravity = new THREE.Vector3(0, 0.6, 0);
+let centerOfGravity = new THREE.Vector3(0, 0.7, 0);
 const vehicleGroup = new THREE.Group();
 const box = new THREE.Mesh(
   new THREE.BoxGeometry(1.8, 1.6, 4),
@@ -989,25 +943,24 @@ vehicleGroup.add(box);
 vehicleGroup.position.set(0, 5, 0);
 // setup rigidbody for this box
 const vehicleBox = new VehicleBody(vehicleGroup);
-vehicleBox.createBox(1500, vehicleGroup.position, vehicleGroup.quaternion, new THREE.Vector3(1.8, 1.6, 4), centerOfGravity);
+vehicleBox.createBox(1600, vehicleGroup.position, vehicleGroup.quaternion, new THREE.Vector3(1.8, 1.6, 4), centerOfGravity);
 // create wheels by using an array of relative wheel positions
 vehicleBox.createWheels([
-  { pos: new THREE.Vector3(vehicleBox.size.x / 2, -vehicleBox.size.y / 1.5, vehicleBox.size.z / 3), suspensionStrength: 18000, suspensionDamping: 1200, wheelRadius: 0.33, powered: false, steering: true, brakes: true },
-  { pos: new THREE.Vector3(-vehicleBox.size.x / 2, -vehicleBox.size.y / 1.5, vehicleBox.size.z / 3), suspensionStrength: 18000, suspensionDamping: 1200, wheelRadius: 0.33, powered: false, steering: true, brakes: true },
-  { pos: new THREE.Vector3(vehicleBox.size.x / 2, -vehicleBox.size.y / 1.5, -vehicleBox.size.z / 3), suspensionStrength: 18000, suspensionDamping: 1200, wheelRadius: 0.33, powered: true, steering: false, brakes: true },
-  { pos: new THREE.Vector3(-vehicleBox.size.x / 2, -vehicleBox.size.y / 1.5, -vehicleBox.size.z / 3), suspensionStrength: 18000, suspensionDamping: 1200, wheelRadius: 0.33, powered: true, steering: false, brakes: true }
+  { pos: new THREE.Vector3(vehicleBox.size.x / 2, -vehicleBox.size.y / 1.5, vehicleBox.size.z / 3), suspensionStrength: 18000, suspensionDamping: 800, wheelRadius: 0.33, powered: false, steering: true, brakes: true },
+  { pos: new THREE.Vector3(-vehicleBox.size.x / 2, -vehicleBox.size.y / 1.5, vehicleBox.size.z / 3), suspensionStrength: 18000, suspensionDamping: 800, wheelRadius: 0.33, powered: false, steering: true, brakes: true },
+  { pos: new THREE.Vector3(vehicleBox.size.x / 2, -vehicleBox.size.y / 1.5, -vehicleBox.size.z / 3), suspensionStrength: 18000, suspensionDamping: 800, wheelRadius: 0.33, powered: true, steering: false, brakes: true },
+  { pos: new THREE.Vector3(-vehicleBox.size.x / 2, -vehicleBox.size.y / 1.5, -vehicleBox.size.z / 3), suspensionStrength: 18000, suspensionDamping: 800, wheelRadius: 0.33, powered: true, steering: false, brakes: true }
 ]);
-vehicleBox.body.setFriction(0.9); // car will stop moving if body touches anything
-vehicleBox.body.setRestitution(0);
-vehicleBox.body.setActivationState(4); // prevent the rigidbody from sleeping
-physicsWorld.addRigidBody(vehicleBox.body);
-vehicleBox.body.setAngularVelocity(new Ammo.btVector3(0, 0, 0)); // set an angular velocity for testing
+physicsWorld.addBody(vehicleBox.body);
 
 // setup our rigidbodies list
 const rigidBodies = [{mesh: vehicleGroup, rigidBody: vehicleBox}];
 
 // add objects to scene
 scene.add(sun, sun.target, ambient, plane, vehicleGroup);
+
+// setup cannon debugger
+// const cannonDebugger = new CannonDebugger(scene, physicsWorld);
  
 // setup step function (update function)
 function step(delta) {
@@ -1024,18 +977,13 @@ function step(delta) {
   // torqueChart.data.datasets[1].data = currentEnginePoint;
   // torqueChart.update();
 
-  physicsWorld.stepSimulation(delta, 10);
+  physicsWorld.step(1/120, delta, 10);
+  // cannonDebugger.update();
 
+  // make meshes match physics world
   for (let i = 0; i < rigidBodies.length; i++) {
-    let tempTransform = tempTrans0;
-    rigidBodies[i].rigidBody.motionState.getWorldTransform(tempTransform);
-    const pos = tempTransform.getOrigin();
-    const rot = tempTransform.getRotation();
-    let pos3 = new THREE.Vector3(pos.x(), pos.y(), pos.z());
-    const rot3 = new THREE.Quaternion(rot.x(), rot.y(), rot.z(), rot.w());
-
-    rigidBodies[i].mesh.quaternion.copy(rot3);
-    rigidBodies[i].mesh.position.copy(pos3);
+    rigidBodies[i].mesh.position.copy(rigidBodies[i].rigidBody.body.position);
+    rigidBodies[i].mesh.quaternion.copy(rigidBodies[i].rigidBody.body.quaternion);
   }
 
   // update camera to follow vehicle
@@ -1056,4 +1004,3 @@ function renderFrame() {
 
 // call our renderFrame function
 renderFrame();
-}
