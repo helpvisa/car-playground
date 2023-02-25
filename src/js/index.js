@@ -295,17 +295,17 @@ class VehicleBody {
     }
 
     // get our engine rpm back from the wheel rpm
-    let totalWheelRPM = 0;
-    let averageSpeed = 0;
+    let averageSpeed = 0; // in rad/s
+    let averageRPM = 0;
     for (let i = 0; i < this.wheels.length; i++) {
       if (this.wheels[i].powered) {
-        averageSpeed += this.wheels[i].angularVelocity / this.wheels[i].wheelRadius;
-        totalWheelRPM += this.wheels[i].angularVelocity * 60 / 2*Math.PI;
+        averageSpeed += this.wheels[i].angularVelocity;
+        averageRPM += this.wheels[i].angularVelocity / 2*Math.PI * 60;
       }
     }
-    totalWheelRPM /= this.numPoweredWheels;
-    averageSpeed /= this.numPoweredWheels;
-    this.currentRPM = totalWheelRPM * this.gearRatio * this.finalDrive;
+    averageSpeed /= this.numPoweredWheels; // divide by number of wheels connected to engine
+    averageRPM /= this.numPoweredWheels;
+    this.currentRPM = averageRPM * this.gearRatio * this.finalDrive; // convert to RPM from rad/s
 
     // clamp RPM values
     this.currentRPM = Math.max(this.minRPM, Math.min(this.maxRPM, this.currentRPM));
@@ -377,7 +377,7 @@ class VehicleBody {
 
       // compute this wheel's angular acceleration and velocity
       if (this.wheels[i].isGrounded) {
-        this.wheels[i].angularVelocity = this.wheels[i].previousForwardVelocity.length() / 2;
+        this.wheels[i].angularVelocity = this.wheels[i].previousForwardVelocity.length() / this.wheels[i].wheelRadius;
         if (this.wheels[i].previousForwardVelocity.dot(this.wheels[i].forwardDir) < 0) {
           this.wheels[i].angularVelocity *= -1;
         }
@@ -385,14 +385,15 @@ class VehicleBody {
 
       const wheelInertia = (15 * (this.wheels[i].wheelRadius * this.wheels[i].wheelRadius) / 2);
       // calculate rolling resistance
-      let rollingResistance = 0.005 * this.wheels[i].maxDriveForce;
+      let rollingResistance = 0;
+      rollingResistance = 0.005 * this.wheels[i].maxDriveForce;
       if (this.wheels[i].angularVelocity > 0) {
         rollingResistance *= -1;
       }
       // calculate acceleration force from engine
       let engineAccel = 0;
       if (this.wheels[i].powered) {
-        engineAccel = (this.appliedTorque * this.gearRatio * this.finalDrive * this.transmissionLoss);
+        engineAccel = (this.appliedTorque * this.gearRatio * this.finalDrive * this.transmissionLoss); // / this.numPoweredWheels;
       }
       // calculate braking force
       let brakingAccel = 0;
@@ -407,18 +408,23 @@ class VehicleBody {
         }
       }
 
-      let slipRatio = 1;
+      let slipRatio = 0;
+      let forwardVelocity = this.getVelocityAtPoint(this.wheels[i].target);
+      forwardVelocity.projectOnVector(this.wheels[i].forwardDir);
       if (this.wheels[i].previousForwardVelocity.length() !== 0) {
         if (this.wheels[i].isGrounded) {
           // calculate slip ratio based on torque applied by engine / braking
-          slipRatio = ((this.wheels[i].angularVelocity + (engineAccel + brakingAccel + rollingResistance) * delta) * this.wheels[i].wheelRadius - this.wheels[i].previousForwardVelocity.length())
-          / (this.wheels[i].angularVelocity + (engineAccel + brakingAccel + rollingResistance) * delta) * this.wheels[i].wheelRadius;
-          slipRatio = Math.max(-1, Math.min(1, slipRatio));
+          slipRatio = ((this.wheels[i].angularVelocity + ((engineAccel + brakingAccel) / wheelInertia * delta)) * this.wheels[i].wheelRadius - this.wheels[i].previousForwardVelocity.length())
+          / ((this.wheels[i].angularVelocity + ((engineAccel + brakingAccel) / wheelInertia * delta)) * this.wheels[i].wheelRadius);
+          slipRatio = Math.max(-2, Math.min(2, slipRatio));
         } else if (this.brake > 0) {
           slipRatio = -1;
+        } else {
+          slipRatio = 1;
         }
       }
       let grip = pacejkaCurve.getValueAtPos(slipRatio / 2); // check slip curve
+      this.wheels[i].grip = grip;
 
       // calculate wheel acceleration
       if (this.wheels[i].isGrounded) {
@@ -431,7 +437,7 @@ class VehicleBody {
 
       // rotate the wheel mesh
       if (slipRatio !== -1) {
-        this.wheels[i].mesh.children[0].rotation.y -= (this.wheels[i].angularVelocity) * delta / this.wheels[i].wheelRadius;
+        this.wheels[i].mesh.children[0].rotation.y -= (this.wheels[i].angularVelocity) * delta;
       }
 
       // compute debug bounding spheres
@@ -575,17 +581,14 @@ class VehicleBody {
 
       // determine slip force
       let slipVelocity = velocity.clone();
-      slipVelocity.projectOnVector(slipDir);
-      let slipAngle = 0;
-      if (forwardVelocity.length() !== 0) {
-        slipAngle = Math.atan((slipVelocity.length() + slipVelocity.dot(forwardVelocity)) / forwardVelocity.length());
-      }
-      this.wheels[i].slip = pacejkaCurve.getValueAtPos(slipAngle / 2); // replace with lookup curve
       slipVelocity.normalize();
-      slipVelocity.multiplyScalar((this.wheels[i].slip * this.wheels[i].maxDriveForce) / this.wheels[i].wheelRadius);
-      if (forwardVelocity.length() < 1) {
-        slipVelocity.normalize().multiplyScalar(1 / delta);
+      let slipAngle = 0;
+      if (forwardVelocity.length() > 0.1) {
+        slipAngle = slipVelocity.angleTo(forwardVelocity) * 180/Math.PI;
       }
+      this.wheels[i].slip = pacejkaCurve.getValueAtPos(slipAngle / 20); // replace with lookup curve
+      slipVelocity.projectOnVector(slipDir);
+      slipVelocity.multiplyScalar(((this.wheels[i].slip) * this.wheels[i].maxDriveForce) / this.wheels[i].wheelRadius);
       let slipForce = this.btVec0;
       slipForce.setValue(-slipVelocity.x, 0, -slipVelocity.z);
 
