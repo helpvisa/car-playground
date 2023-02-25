@@ -591,7 +591,10 @@ class VehicleBody {
       slipVelocity.normalize();
       let slipAngle = 1;
       this.wheels[i].slip = pacejkaCurve.getValueAtPos(slipAngle / 20); // replace with lookup curve; 20 degrees = max slip angle
-      let appliedSlipForce = (this.wheels[i].slip * this.wheels[i].maxDriveForce) / this.wheels[i].wheelRadius
+      let appliedSlipForce = 0;
+      if (forwardVelocity.length() > 0.1) {
+        appliedSlipForce = (this.wheels[i].slip * this.wheels[i].maxDriveForce) / this.wheels[i].wheelRadius
+      }
 
       // calculate max applied force in forward + slip directions based on max allowed drive force at wheel
       // compare magnitude of accel and slip forces then divide by allowed maximum
