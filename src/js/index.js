@@ -66,7 +66,7 @@ class VehicleBody {
 
     // setup engine
     this.currentRPM = 0;
-    this.maxRPM = 6000;
+    this.maxRPM = 8000;
     this.minRPM = 1000;
     this.currentGear = 1; // 0 is reverse
     this.gears = [-2.9, 2.66, 1.78, 1.3, 1.0, 0.74, 0.5];
@@ -76,7 +76,7 @@ class VehicleBody {
     this.currentSpeed = 0;
     this.throttle = 0;
     this.brake = 0;
-    this.brakingPower = 2500;
+    this.brakingPower = 5000;
     this.appliedTorque = 0;
     this.numPoweredWheels = 0;
 
@@ -305,7 +305,7 @@ class VehicleBody {
     }
     averageSpeed /= this.numPoweredWheels; // divide by number of wheels connected to engine
     averageRPM /= this.numPoweredWheels;
-    this.currentRPM = averageRPM * this.gearRatio * this.finalDrive; // convert to RPM from rad/s
+    this.currentRPM = averageRPM * this.gearRatio * this.finalDrive * this.transmissionLoss; // convert to RPM from rad/s
 
     // clamp RPM values
     this.currentRPM = Math.max(this.minRPM, Math.min(this.maxRPM, this.currentRPM));
@@ -582,25 +582,32 @@ class VehicleBody {
       // determine slip force
       let slipVelocity = velocity.clone();
       slipVelocity.normalize();
-      let slipAngle = 0;
-      if (forwardVelocity.length() > 0.1) {
-        slipAngle = slipVelocity.angleTo(forwardVelocity) * 180/Math.PI;
+      let slipAngle = 1;
+      this.wheels[i].slip = pacejkaCurve.getValueAtPos(slipAngle / 20); // replace with lookup curve; 20 degrees = max slip angle
+      let appliedSlipForce = (this.wheels[i].slip * this.wheels[i].maxDriveForce) / this.wheels[i].wheelRadius
+
+      // calculate max applied force in forward + slip directions based on max allowed drive force at wheel
+      // compare magnitude of accel and slip forces then divide by allowed maximum
+      let totalForce = Math.abs(appliedSlipForce) + Math.abs(this.wheels[i].appliedAcceleration);
+      let percentageAppliedForce = 1;
+      if (this.wheels[i].maxDriveForce !== 0 && totalForce > this.wheels[i].maxDriveForce) {
+        percentageAppliedForce = this.wheels[i].maxDriveForce / totalForce;
       }
-      this.wheels[i].slip = pacejkaCurve.getValueAtPos(slipAngle / 20); // replace with lookup curve
-      slipVelocity.projectOnVector(slipDir);
-      slipVelocity.multiplyScalar(((this.wheels[i].slip) * this.wheels[i].maxDriveForce) / this.wheels[i].wheelRadius);
-      let slipForce = this.btVec0;
-      slipForce.setValue(-slipVelocity.x, 0, -slipVelocity.z);
+      let appliedAcceleration = this.wheels[i].appliedAcceleration * percentageAppliedForce;
+      appliedSlipForce *= percentageAppliedForce;
 
-      // apply acceleration force and determine current wheel grip
-      let acceleration = this.wheels[i].appliedAcceleration;
-
+      // apply acceleration and slip force based on traction circle and determine current wheel grip
+      let acceleration = appliedAcceleration;
       let accelForce = this.btVec2;
       accelForce.setValue(
         (forwardDir.x * acceleration),
         (forwardDir.y * acceleration),
         (forwardDir.z * acceleration)
       );
+      slipVelocity.projectOnVector(slipDir);
+      slipVelocity.multiplyScalar(appliedSlipForce);
+      let slipForce = this.btVec0;
+      slipForce.setValue(-slipVelocity.x, 0, -slipVelocity.z);
 
       // get local location of wheel target
       let localTarget = new THREE.Vector3();
