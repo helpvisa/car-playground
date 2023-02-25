@@ -11,12 +11,13 @@ Ammo().then(function(AmmoLib) {
 /***********************************************************************************/
 // define our main function
 function main() {
+let currentEnginePoint = [{x: 0, y: 0}];
 // load textures
 // load our wheel texture
 const checker = new THREE.TextureLoader().load("./src/textures/wheel_test_tex.jpg");
 checker.wrapS = THREE.RepeatWrapping;
 checker.wrapT = THREE.RepeatWrapping;
-checker.repeat.set(100, 100);
+checker.repeat.set(1000, 1000);
 const wheelTex = new THREE.TextureLoader().load("./src/textures/checker_02.jpg");
 wheelTex.wrapS = THREE.RepeatWrapping;
 wheelTex.wrapT = THREE.RepeatWrapping;
@@ -66,7 +67,7 @@ class VehicleBody {
 
     // setup engine
     this.currentRPM = 0;
-    this.maxRPM = 8000;
+    this.maxRPM = 6000;
     this.minRPM = 1000;
     this.currentGear = 1; // 0 is reverse
     this.gears = [-2.9, 2.66, 1.78, 1.3, 1.0, 0.74, 0.5];
@@ -76,7 +77,7 @@ class VehicleBody {
     this.currentSpeed = 0;
     this.throttle = 0;
     this.brake = 0;
-    this.brakingPower = 5000;
+    this.brakingPower = 8000;
     this.appliedTorque = 0;
     this.numPoweredWheels = 0;
 
@@ -299,13 +300,13 @@ class VehicleBody {
     let averageRPM = 0;
     for (let i = 0; i < this.wheels.length; i++) {
       if (this.wheels[i].powered) {
-        averageSpeed += this.wheels[i].angularVelocity;
-        averageRPM += this.wheels[i].angularVelocity / 2*Math.PI * 60;
+        averageSpeed += this.wheels[i].angularVelocity * this.wheels[i].wheelRadius;
+        averageRPM += (this.wheels[i].angularVelocity / (2*Math.PI)) * 60;
       }
     }
     averageSpeed /= this.numPoweredWheels; // divide by number of wheels connected to engine
     averageRPM /= this.numPoweredWheels;
-    this.currentRPM = averageRPM * this.gearRatio * this.finalDrive * this.transmissionLoss; // convert to RPM from rad/s
+    this.currentRPM = averageRPM * this.gearRatio * this.finalDrive; // convert to RPM from rad/s
 
     // clamp RPM values
     this.currentRPM = Math.max(this.minRPM, Math.min(this.maxRPM, this.currentRPM));
@@ -383,18 +384,27 @@ class VehicleBody {
         }
       }
 
-      const wheelInertia = (15 * (this.wheels[i].wheelRadius * this.wheels[i].wheelRadius) / 2);
+      const wheelInertia = (25 * (this.wheels[i].wheelRadius * this.wheels[i].wheelRadius) / 2); // 25 = 25kg (wheel weight)
       // calculate rolling resistance
       let rollingResistance = 0;
       rollingResistance = 0.005 * this.wheels[i].maxDriveForce;
       if (this.wheels[i].angularVelocity > 0) {
         rollingResistance *= -1;
       }
-      // calculate acceleration force from engine
+
+      // calculate acceleration force from engine if wheel is connected
       let engineAccel = 0;
       if (this.wheels[i].powered) {
-        engineAccel = (this.appliedTorque * this.gearRatio * this.finalDrive * this.transmissionLoss); // / this.numPoweredWheels;
+        // calculate max allowed angular velocity at current gear
+        let maxAllowedWheelVelocity = (this.maxRPM * (2*Math.PI) / 60 / this.gearRatio / this.finalDrive);
+
+        if (Math.abs(this.wheels[i].angularVelocity) > Math.abs(maxAllowedWheelVelocity)) {
+          this.wheels[i].angularVelocity = maxAllowedWheelVelocity;
+        } else {
+          engineAccel = (this.appliedTorque * this.gearRatio * this.finalDrive); // / this.numPoweredWheels;
+        }
       }
+
       // calculate braking force
       let brakingAccel = 0;
       if (this.wheels[i].brakes) {
@@ -415,7 +425,7 @@ class VehicleBody {
         if (this.wheels[i].isGrounded) {
           // calculate slip ratio based on torque applied by engine / braking
           slipRatio = ((this.wheels[i].angularVelocity + ((engineAccel + brakingAccel) / wheelInertia * delta)) * this.wheels[i].wheelRadius - this.wheels[i].previousForwardVelocity.length())
-          / ((this.wheels[i].angularVelocity + ((engineAccel + brakingAccel) / wheelInertia * delta)) * this.wheels[i].wheelRadius);
+          / ((this.wheels[i].angularVelocity + ((engineAccel) / wheelInertia * delta)) * this.wheels[i].wheelRadius);
           slipRatio = Math.max(-2, Math.min(2, slipRatio));
         } else if (this.brake > 0) {
           slipRatio = -1;
@@ -436,7 +446,7 @@ class VehicleBody {
       this.wheels[i].appliedAcceleration = (Math.max(-this.wheels[i].maxDriveForce, Math.min((engineAccel + brakingAccel) * grip, this.wheels[i].maxDriveForce)) + rollingResistance) / this.wheels[i].wheelRadius;
 
       // rotate the wheel mesh
-      if (slipRatio !== -1) {
+      if (slipRatio > -1) {
         this.wheels[i].mesh.children[0].rotation.y -= (this.wheels[i].angularVelocity) * delta;
       }
 
@@ -518,15 +528,12 @@ class VehicleBody {
     for (let i = 0; i < this.wheels.length; i++) {
       totalForce += this.wheels[i].suspensionForceAtWheel;
     }
-    // console.log('total force:', totalForce);
 
     // iterate through wheels and apply weight as percentage of force applied
     for (let i = 0; i < this.wheels.length; i++) {
       let percentage = this.wheels[i].suspensionForceAtWheel / totalForce;
       this.wheels[i].weightAtWheel = this.mass * percentage;
       this.wheels[i].maxDriveForce = this.wheels[i].weightAtWheel * 9.8
-      // console.log('wheel', i, "drive:", this.wheels[i].maxDriveForce);
-      // console.log('wheel', i, "sus:", this.wheels[i].suspensionForceAtWheel);
     }
   }
 
@@ -588,7 +595,7 @@ class VehicleBody {
 
       // calculate max applied force in forward + slip directions based on max allowed drive force at wheel
       // compare magnitude of accel and slip forces then divide by allowed maximum
-      let totalForce = Math.abs(appliedSlipForce) + Math.abs(this.wheels[i].appliedAcceleration);
+      let totalForce = Math.abs(appliedSlipForce * this.wheels[i].wheelRadius) + Math.abs(this.wheels[i].appliedAcceleration * this.wheels[i].wheelRadius);
       let percentageAppliedForce = 1;
       if (this.wheels[i].maxDriveForce !== 0 && totalForce > this.wheels[i].maxDriveForce) {
         percentageAppliedForce = this.wheels[i].maxDriveForce / totalForce;
@@ -729,9 +736,49 @@ toggleWheelsEl.addEventListener("click", () => {
 });
 
 canvasDiv.appendChild(controlDiv);
-document.body.append(toggleDebugEl, toggleWheelsEl);
+// capture our game div
+document.getElementById('game-div').append(toggleDebugEl, toggleWheelsEl);
 // add the canvas body to the page
-document.body.appendChild(canvasDiv);
+document.getElementById('game-div').appendChild(canvasDiv);
+// create our canvas
+// const chartCanvas = document.createElement("canvas");
+// chartCanvas.id = "curveChart";
+// document.getElementById('chart-div').appendChild(chartCanvas);
+// // plot torque curve to chart.js canvas
+// const context = document.getElementById('curveChart');
+// const torqueChart = new Chart(context, {
+//   type: 'line',
+//   data: {
+//     datasets: [
+//       {
+//       label: 'Engine Torque',
+//       data: torquePoints,
+//       fill: false,
+//       borderColor: 'rgb(255, 0, 0)',
+//       tension: 0.5
+//       },
+//       {
+//         label: 'Current Torque',
+//         data: currentEnginePoint,
+//         fill: true,
+//         borderColor: 'rgb(0, 255, 0)',
+//         tension: 0
+//       }
+//     ]
+//   },
+//   options: {
+//     scales: {
+//       y: {
+//         beginAtZero: true,
+//         type: 'linear'
+//       },
+//       x: {
+//         beginAtZero: true,
+//         type: 'linear'
+//       }
+//     }
+//   }
+// });
 
 // window resize function (resizes canvas)
 window.addEventListener("resize", () => {
@@ -910,7 +957,7 @@ const ambient = new THREE.AmbientLight(0x606060);
 
 // setup basic test meshes
 const plane = new THREE.Mesh(
-  new THREE.PlaneGeometry(1000, 1000, 1, 1),
+  new THREE.PlaneGeometry(10000, 10000, 1, 1),
   new THREE.MeshStandardMaterial({
     color: 0xFFFFFF,
     map: checker,
@@ -920,7 +967,7 @@ plane.receiveShadow = true;
 plane.rotation.x = -Math.PI / 2;
 // setup ground rigidbody
 const rbGround = new RigidBody();
-rbGround.createBox(0, new THREE.Vector3(plane.position.x, plane.position.y, plane.position.z), plane.quaternion, new THREE.Vector3(1000, 1000, 0.01));
+rbGround.createBox(0, new THREE.Vector3(plane.position.x, plane.position.y, plane.position.z), plane.quaternion, new THREE.Vector3(10000, 10000, 0.01));
 rbGround.body.setRestitution(0.0);
 physicsWorld.addRigidBody(rbGround.body);
 
@@ -942,10 +989,10 @@ const vehicleBox = new VehicleBody(vehicleGroup);
 vehicleBox.createBox(1500, vehicleGroup.position, vehicleGroup.quaternion, new THREE.Vector3(1.8, 1.6, 4), centerOfGravity);
 // create wheels by using an array of relative wheel positions
 vehicleBox.createWheels([
-  { pos: new THREE.Vector3(vehicleBox.size.x / 2, -vehicleBox.size.y / 1.5, vehicleBox.size.z / 3), suspensionStrength: 18000, suspensionDamping: 1200, wheelRadius: 0.5, powered: false, steering: true, brakes: true },
-  { pos: new THREE.Vector3(-vehicleBox.size.x / 2, -vehicleBox.size.y / 1.5, vehicleBox.size.z / 3), suspensionStrength: 18000, suspensionDamping: 1200, wheelRadius: 0.5, powered: false, steering: true, brakes: true },
-  { pos: new THREE.Vector3(vehicleBox.size.x / 2, -vehicleBox.size.y / 1.5, -vehicleBox.size.z / 3), suspensionStrength: 18000, suspensionDamping: 1200, wheelRadius: 0.5, powered: true, steering: false, brakes: true },
-  { pos: new THREE.Vector3(-vehicleBox.size.x / 2, -vehicleBox.size.y / 1.5, -vehicleBox.size.z / 3), suspensionStrength: 18000, suspensionDamping: 1200, wheelRadius: 0.5, powered: true, steering: false, brakes: true }
+  { pos: new THREE.Vector3(vehicleBox.size.x / 2, -vehicleBox.size.y / 1.5, vehicleBox.size.z / 3), suspensionStrength: 18000, suspensionDamping: 1200, wheelRadius: 0.33, powered: false, steering: true, brakes: true },
+  { pos: new THREE.Vector3(-vehicleBox.size.x / 2, -vehicleBox.size.y / 1.5, vehicleBox.size.z / 3), suspensionStrength: 18000, suspensionDamping: 1200, wheelRadius: 0.33, powered: false, steering: true, brakes: true },
+  { pos: new THREE.Vector3(vehicleBox.size.x / 2, -vehicleBox.size.y / 1.5, -vehicleBox.size.z / 3), suspensionStrength: 18000, suspensionDamping: 1200, wheelRadius: 0.33, powered: true, steering: false, brakes: true },
+  { pos: new THREE.Vector3(-vehicleBox.size.x / 2, -vehicleBox.size.y / 1.5, -vehicleBox.size.z / 3), suspensionStrength: 18000, suspensionDamping: 1200, wheelRadius: 0.33, powered: true, steering: false, brakes: true }
 ]);
 vehicleBox.body.setFriction(0.9); // car will stop moving if body touches anything
 vehicleBox.body.setRestitution(0);
@@ -968,6 +1015,11 @@ function step(delta) {
   vehicleBox.calcSteering(delta); // needs delta time to get rpm
   vehicleBox.calcSuspension();
   vehicleBox.applyDrag();
+
+  // update current engine point
+  currentEnginePoint = [{x: vehicleBox.currentRPM / vehicleBox.maxRPM, y: vehicleBox.appliedTorque}];
+  // torqueChart.data.datasets[1].data = currentEnginePoint;
+  // torqueChart.update();
 
   physicsWorld.stepSimulation(delta, 10);
 
