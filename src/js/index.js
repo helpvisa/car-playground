@@ -113,6 +113,7 @@ class VehicleBody {
 
     return {
       position: new THREE.Vector3(pos.x, pos.y, pos.z),
+      quaternion: quat,
       rotation: new THREE.Vector3(rot.x, rot.y, rot.z)
     }
   }
@@ -573,6 +574,11 @@ class VehicleBody {
       // apply acceleration and slip force based on traction circle and determine current wheel grip
       let acceleration = appliedAcceleration;
       let accelForce = new CANNON.Vec3();
+      // if brakes are being applied, don't apply braking relative to steering direction anymore
+      if (this.brake) {
+        forwardDir = new THREE.Vector3(0, 0, 1);
+        forwardDir.applyQuaternion(transform.quaternion);
+      }
       accelForce.set(
         (forwardDir.x * acceleration),
         (forwardDir.y * acceleration),
@@ -890,9 +896,9 @@ const t = new THREE.Clock();
 const scene = new THREE.Scene(); 
 
 // setup camera
-const camera = new THREE.PerspectiveCamera(10, window.innerWidth / window.innerHeight, 1.0, 1000.0);
+const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 1.0, 1000.0);
 camera.position.set(100, 100, 0);
-camera.rotation.y = 90 * Math.PI/180;
+// camera.rotation.y = 90 * Math.PI/180;
 camera.lookAt(0, 0, 0);
 
 // setup lights
@@ -987,7 +993,9 @@ function step(delta) {
   }
 
   // update camera to follow vehicle
-  camera.position.set(vehicleGroup.position.x + 100, vehicleGroup.position.y + 100, vehicleGroup.position.z);
+  camera.position.set(vehicleGroup.position.x, vehicleGroup.position.y + 0.6, vehicleGroup.position.z);
+  camera.rotation.set(-vehicleGroup.rotation.x, vehicleGroup.rotation.y, -vehicleGroup.rotation.z);
+  camera.rotateOnWorldAxis(new THREE.Vector3(0, 1, 0), Math.PI);
   // update directional light
   sun.position.set(vehicleGroup.position.x, vehicleGroup.position.y + 5, vehicleGroup.position.z);
   sun.target.position.set(vehicleGroup.position.x, vehicleGroup.position.y, vehicleGroup.position.z)
