@@ -64046,19 +64046,19 @@ let pacejkaPoints = [
   },
   {
     x: 0.25,
-    y: 0.95
-  },
-  {
-    x: 0.5,
     y: 0.9
   },
   {
-    x: 0.75,
+    x: 0.5,
     y: 0.85
   },
   {
-    x: 1,
+    x: 0.75,
     y: 0.8
+  },
+  {
+    x: 1,
+    y: 0.75
   }
 ]
 
@@ -64438,7 +64438,7 @@ class VehicleBody {
         if (Math.abs(this.wheels[i].angularVelocity) > Math.abs(maxAllowedWheelVelocity)) {
           this.wheels[i].angularVelocity = maxAllowedWheelVelocity;
         } else {
-          engineAccel = (this.appliedTorque * this.gearRatio * this.finalDrive); // / this.numPoweredWheels;
+          engineAccel = (this.appliedTorque * this.gearRatio * this.finalDrive) / this.numPoweredWheels;
         }
       }
 
@@ -64475,7 +64475,7 @@ class VehicleBody {
 
       // calculate wheel acceleration
       if (this.wheels[i].isGrounded) {
-        this.wheels[i].angularAcceleration = (engineAccel + rollingResistance - Math.max(-this.wheels[i].maxDriveForce, Math.min((engineAccel) * grip, this.wheels[i].maxDriveForce)) + rollingResistance) / wheelInertia;
+        this.wheels[i].angularAcceleration = (engineAccel - Math.max(-this.wheels[i].maxDriveForce, Math.min((engineAccel) * grip, this.wheels[i].maxDriveForce)) + rollingResistance) / wheelInertia;
       } else {
         this.wheels[i].angularAcceleration = (engineAccel + brakingAccel + rollingResistance) / wheelInertia;
       }
@@ -64815,7 +64815,11 @@ document.getElementById('game-div').appendChild(canvasDiv);
 
 // window resize function (resizes canvas)
 window.addEventListener("resize", () => {
-  camera.aspect = window.innerWidth / window.innerHeight;
+  viewRatio = window.innerWidth / window.innerHeight;
+  camera.left = viewRatio * 20 / -2;
+  camera.right = viewRatio * 20 / 2;
+  camera.top = 20 / 2;
+  camera.bottom = 20 / -2;
   camera.updateProjectionMatrix();
   threejs.setSize(window.innerWidth * 0.6, window.innerHeight * 0.6);
 }, false);
@@ -64965,9 +64969,9 @@ const t = new THREE.Clock();
 const scene = new THREE.Scene(); 
 
 // setup camera
-const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 1.0, 1000.0);
-camera.position.set(100, 100, 0);
-// camera.rotation.y = 90 * Math.PI/180;
+let viewRatio = window.innerWidth / window.innerHeight;
+const camera = new THREE.OrthographicCamera(viewRatio * 20 / -2, viewRatio * 20 / 2, 20 / 2, 20 / -2, -1000, 1000);
+camera.position.set(10, 10, 0);
 camera.lookAt(0, 0, 0);
 
 // setup lights
@@ -65062,9 +65066,10 @@ function step(delta) {
   }
 
   // update camera to follow vehicle
-  camera.position.set(vehicleGroup.position.x, vehicleGroup.position.y + 0.6, vehicleGroup.position.z);
-  camera.rotation.set(-vehicleGroup.rotation.x, vehicleGroup.rotation.y, -vehicleGroup.rotation.z);
-  camera.rotateOnWorldAxis(new THREE.Vector3(0, 1, 0), Math.PI);
+  camera.position.set(vehicleGroup.position.x + 10, vehicleGroup.position.y + 10, vehicleGroup.position.z);
+  // camera.position.set(vehicleGroup.position.x, vehicleGroup.position.y + 0.6, vehicleGroup.position.z);
+  // camera.rotation.set(-vehicleGroup.rotation.x, vehicleGroup.rotation.y, -vehicleGroup.rotation.z);
+  // camera.rotateOnWorldAxis(new THREE.Vector3(0, 1, 0), Math.PI);
   // update directional light
   sun.position.set(vehicleGroup.position.x, vehicleGroup.position.y + 5, vehicleGroup.position.z);
   sun.target.position.set(vehicleGroup.position.x, vehicleGroup.position.y, vehicleGroup.position.z)
