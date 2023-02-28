@@ -222,9 +222,9 @@ class VehicleBody {
       }
 
       // add our debug renderers to the scene (always render above geometry)
-      wheel.springLine.renderOrder = THREE.zindex || 999;
-      wheel.accelLine.renderOrder = THREE.zindex || 999;
-      wheel.slipLine.renderOrder = THREE.zindex || 999;
+      wheel.springLine.renderOrder = 1;
+      wheel.accelLine.renderOrder = 1;
+      wheel.slipLine.renderOrder = 1;
       this.scene.add(wheel.springLine);
       this.scene.add(wheel.accelLine);
       this.scene.add(wheel.slipLine);

@@ -1,6 +1,6 @@
 // import our library dependencies
 import * as THREE from 'three';
-// const { GLTFLoader } = require('three/examples/jsm/loaders/GLTFLoader.js');
+import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import * as CANNON from 'cannon-es';
 // const CannonDebugger = require('cannon-es-debugger');
 import * as TONE from 'tone';
@@ -19,7 +19,7 @@ checker.repeat.set(1000, 1000);
 
 /*************************************************************************/
 // initalize our model loader
-// const loader = new THREE.GLTFLoader();
+const loader = new GLTFLoader();
 
 // initialize cannon-es
 const physicsWorld = new CANNON.World({
@@ -101,13 +101,6 @@ const box = new THREE.Mesh(
 box.position.copy(centerOfGravity); // acount for offset
 box.castShadow = true;
 box.receiveShadow = true;
-// load our car model
-// loader.load('../models/vehicles/tinycar_01.glb', (gltf) => {
-//   gltf.position.copy(centerOfGravity);
-//   gltf.castShadow = true;
-//   gltf.receiveShadow = true;
-//   vehicleGroup.add(gltf);
-// }, undefined, (error) => { console.error(error) });
 // add box or model to vehicle parent
 vehicleGroup.add(box);
 scene.add(vehicleGroup);
