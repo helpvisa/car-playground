@@ -303,10 +303,10 @@ class VehicleBody {
 
     // clamp RPM values
     this.currentRPM = Math.max(this.minRPM, Math.min(this.maxRPM, this.currentRPM));
-    this.idleSound.source.frequency.setValueAtTime(this.currentRPM / 40, listener.context.currentTime);
-    this.idleSound.source.frequency.linearRampToValueAtTime(this.currentRPM / 40, listener.context.currentTime + 0.1);
-    this.acceleratorSound.source.frequency.setValueAtTime(this.currentRPM / 20, listener.context.currentTime);
-    this.acceleratorSound.source.frequency.linearRampToValueAtTime(this.currentRPM / 20, listener.context.currentTime + 0.1);
+
+    // update audio ramps
+    this.idleSound.source.frequency.setTargetAtTime(this.currentRPM / 40, listener.context.currentTime + delta, 0.015);
+    this.acceleratorSound.source.frequency.setTargetAtTime(this.currentRPM / 20, listener.context.currentTime + delta, 0.015);
     this.idleSound.setVolume(Math.max(0.5, (1 - this.throttle) * 0.6));
     this.acceleratorSound.setVolume(Math.max(0.4, this.throttle * 0.5));
 
