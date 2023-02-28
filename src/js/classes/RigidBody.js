@@ -1,5 +1,5 @@
 // import our dependencies
-const CANNON = require('cannon-es');
+import * as CANNON from 'cannon-es';
 
 // basic box-shape rigidbody
 class RigidBody {
@@ -22,4 +22,4 @@ class RigidBody {
   }
 }
 
-module.exports = { RigidBody };
+export { RigidBody };

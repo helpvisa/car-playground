@@ -1,8 +1,8 @@
 // import dependencies
-const CANNON = require('cannon-es');
-const THREE = require('three');
-const TONE = require('tone');
-const { torqueCurve, pacejkaCurve } = require('./Curve.js');
+import * as CANNON from 'cannon-es';
+import * as THREE from 'three';
+import * as TONE from 'tone';
+import { torqueCurve, pacejkaCurve } from './Curve.js';
 
 // create models / textures for use within class
 const wheelTex = new THREE.TextureLoader().load("./src/textures/checker_02.jpg");
@@ -390,7 +390,7 @@ class VehicleBody {
       const wheelInertia = (25 * (this.wheels[i].wheelRadius * this.wheels[i].wheelRadius) / 2); // 25 = 25kg (wheel weight)
       // calculate rolling resistance
       let rollingResistance = 0;
-      rollingResistance = 0.005 * this.wheels[i].maxDriveForce;
+      rollingResistance = 0.012 * this.wheels[i].maxDriveForce;
       if (this.wheels[i].angularVelocity > 0) {
         rollingResistance *= -1;
       }
@@ -704,4 +704,4 @@ class VehicleBody {
   }
 }
 
-module.exports = { VehicleBody };
+export { VehicleBody };

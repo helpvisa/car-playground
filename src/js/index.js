@@ -1,13 +1,13 @@
 // import our library dependencies
-const THREE = require('three');
+import * as THREE from 'three';
 // const { GLTFLoader } = require('three/examples/jsm/loaders/GLTFLoader.js');
-const CANNON = require('cannon-es');
+import * as CANNON from 'cannon-es';
 // const CannonDebugger = require('cannon-es-debugger');
-const TONE = require('tone');
+import * as TONE from 'tone';
 
 // import our custom classes / objects
-const { RigidBody } = require('./classes/RigidBody.js');
-const { VehicleBody } = require('./classes/Vehicle.js');
+import { RigidBody } from './classes/RigidBody.js';
+import { VehicleBody } from './classes/Vehicle.js';
 
 /***********************************************************************************/
 // load textures

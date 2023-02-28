@@ -122,4 +122,4 @@ let pacejkaPoints = [
 const torqueCurve = new Curve(torquePoints);
 const pacejkaCurve = new Curve(pacejkaPoints);
 
-module.exports = { torqueCurve, pacejkaCurve };
+export { torqueCurve, pacejkaCurve };
