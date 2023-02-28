@@ -13081,7 +13081,7 @@ exports.Vec3Pool = Vec3Pool;
 exports.WheelInfo = WheelInfo;
 exports.World = World;
 
-},{"perf_hooks":6}],2:[function(require,module,exports){
+},{"perf_hooks":8}],2:[function(require,module,exports){
 console.warn( 'Scripts "build/three.js" and "build/three.min.js" are deprecated with r150+, and will be removed with r160. Please use ES Modules or alternatives: https://threejs.org/docs/index.html#manual/en/introduction/Installation' );
 /**
  * @license
@@ -64090,37 +64090,10 @@ const pacejkaCurve = new Curve(pacejkaPoints);
 
 module.exports = { torqueCurve, pacejkaCurve };
 },{}],5:[function(require,module,exports){
-// import our library dependencies
-const THREE = require('three');
-// const { GLTFLoader } = require('three/examples/jsm/loaders/GLTFLoader.js');
+// import our dependencies
 const CANNON = require('cannon-es');
-// const CannonDebugger = require('cannon-es-debugger');
-const TONE = require('tone');
-const { torqueCurve, pacejkaCurve } = require('./classes/curve.js');
 
-// initalize our model loader
-// const loader = new THREE.GLTFLoader();
-
-// initialize cannon-es
-const physicsWorld = new CANNON.World({
-  gravity: new CANNON.Vec3(0, -9.8, 0),
-});
-
-/***********************************************************************************/
-let currentEnginePoint = [{ x: 0, y: 0 }];
-// load textures
-// load our wheel texture
-const checker = new THREE.TextureLoader().load("./src/textures/wheel_test_tex.jpg");
-checker.wrapS = THREE.RepeatWrapping;
-checker.wrapT = THREE.RepeatWrapping;
-checker.repeat.set(1000, 1000);
-const wheelTex = new THREE.TextureLoader().load("./src/textures/checker_02.jpg");
-wheelTex.wrapS = THREE.RepeatWrapping;
-wheelTex.wrapT = THREE.RepeatWrapping;
-wheelTex.repeat.set(1, 1);
-
-// define our classes
-// vehicle rigidbody
+// basic box-shape rigidbody
 class RigidBody {
   constructor() {
 
@@ -64141,10 +64114,28 @@ class RigidBody {
   }
 }
 
+module.exports = { RigidBody };
+},{"cannon-es":1}],6:[function(require,module,exports){
+// import dependencies
+const CANNON = require('cannon-es');
+const THREE = require('three');
+const TONE = require('tone');
+const { torqueCurve, pacejkaCurve } = require('./Curve.js');
+
+// create models / textures for use within class
+const wheelTex = new THREE.TextureLoader().load("./src/textures/checker_02.jpg");
+wheelTex.wrapS = THREE.RepeatWrapping;
+wheelTex.wrapT = THREE.RepeatWrapping;
+wheelTex.repeat.set(1, 1);
+
+// vehicle rigidbody
 class VehicleBody {
-  constructor(group) {
-    // store our parent transform for reuse
+  constructor(group, input, collisionObjects = [], scene) {
+    // store our parent transform for reuse and store our input obj
+    this.scene = scene;
     this.parent = group;
+    this.collisionObjects = collisionObjects
+    this.input = input;
     // store a center of gravity offset
     this.centerOfGravity = new THREE.Vector3(0, 0, 0);
 
@@ -64204,10 +64195,10 @@ class VehicleBody {
   // create our tone audio sources
   createAudio() {
     // setup engine audio / oscillator
-    this.idleSound = new TONE.Oscillator(this.currentRPM / 40, 'sawtooth12').toDestination();
+    this.idleSound = new TONE.Oscillator(this.currentRPM / 40, 'sawtooth16').toDestination();
     this.idleSound.set({ volume: -12 });
     // accelerator
-    this.acceleratorSound = new TONE.Oscillator(this.currentRPM / 30, 'sawtooth8').toDestination();
+    this.acceleratorSound = new TONE.Oscillator(this.currentRPM / 30, 'sawtooth22').toDestination();
     this.acceleratorSound.set({ volume: -12 });
 
     // start the tones
@@ -64352,9 +64343,9 @@ class VehicleBody {
       wheel.springLine.renderOrder = THREE.zindex || 999;
       wheel.accelLine.renderOrder = THREE.zindex || 999;
       wheel.slipLine.renderOrder = THREE.zindex || 999;
-      scene.add(wheel.springLine);
-      scene.add(wheel.accelLine);
-      scene.add(wheel.slipLine);
+      this.scene.add(wheel.springLine);
+      this.scene.add(wheel.accelLine);
+      this.scene.add(wheel.slipLine);
 
       // assign position from the input array vector
       // this is a relative offset
@@ -64383,14 +64374,14 @@ class VehicleBody {
   // determine RPM of engine based on user input
   updateEngine(delta) {
     // get input to drive engine
-    if (input.accel) {
+    if (this.input.accel) {
       this.throttle += 2 * delta;
     } else {
       this.throttle -= 4 * delta;
     }
     this.throttle = Math.max(0, Math.min(1, this.throttle));
     // get brakes
-    if (input.brake) {
+    if (this.input.brake) {
       this.brake += 2 * delta;
     } else {
       this.brake -= 4 * delta;
@@ -64398,21 +64389,21 @@ class VehicleBody {
     this.brake = Math.max(0, Math.min(1, this.brake));
 
     // change gears
-    if (input.shiftUp) {
+    if (this.input.shiftUp) {
       this.currentGear += 1;
       if (this.currentGear > this.gears.length - 1) {
         this.currentGear = this.gears.length - 1;
       }
       this.gearRatio = this.gears[this.currentGear];
-      input.shiftUp = false;
+      this.input.shiftUp = false;
     }
-    if (input.shiftDown) {
+    if (this.input.shiftDown) {
       this.currentGear -= 1;
       if (this.currentGear < 0) {
         this.currentGear = 0;
       }
       this.gearRatio = this.gears[this.currentGear];
-      input.shiftDown = false;
+      this.input.shiftDown = false;
     }
 
     // get our engine rpm back from the wheel rpm
@@ -64484,7 +64475,7 @@ class VehicleBody {
       this.raycaster.far = this.wheels[i].wheelRadius * 2;
       // now cast the ray
       this.raycaster.set(position, direction); // down vector is relative to wheel
-      const intersects = this.raycaster.intersectObjects([plane]); // intersect our plane
+      const intersects = this.raycaster.intersectObjects(this.collisionObjects); // intersect our plane
       if (intersects.length > 0) {
         this.wheels[i].target = intersects[0].point;
         this.wheels[i].target.y += this.wheels[i].wheelRadius;
@@ -64497,7 +64488,7 @@ class VehicleBody {
       }
 
       // set visual mesh position
-      scene.attach(this.wheels[i].mesh); // attach to scene, modify global transform
+      this.scene.attach(this.wheels[i].mesh); // attach to scene, modify global transform
       // directly setting position does not seem to work correctly; each axis must be updated individually
       this.wheels[i].mesh.position.x = this.wheels[i].target.x;
       this.wheels[i].mesh.position.y = this.wheels[i].target.y;
@@ -64584,7 +64575,7 @@ class VehicleBody {
       // trigger wheel slip tire screech audio
       if (this.wheels[i].longSlipSound) {
         if (Math.abs(slipRatio) > 0.1 && this.wheels[i].isGrounded && this.wheels[i].previousForwardVelocity.length() > 0.2) {
-          this.wheels[i].longSlipSound.set({ volume: -100 + Math.abs(50 * slipRatio), frequency: Math.max(1000, Math.min(2000, 200 * this.wheels[i].previousForwardVelocity.length())) });
+          this.wheels[i].longSlipSound.set({ volume: -100 + Math.abs(50 * slipRatio), frequency: Math.max(1200, Math.min(2000, 200 * this.wheels[i].previousForwardVelocity.length())) });
         } else {
           this.wheels[i].longSlipSound.set({ volume: -100 });
         }
@@ -64699,11 +64690,11 @@ class VehicleBody {
         let meshTarget = new THREE.Euler(this.wheels[i].mesh.rotation.x, 0, this.wheels[i].mesh.rotation.z);
 
         // default rest position (no angle)
-        if (input.right) {
+        if (this.input.right) {
           wheelTarget.y -= 35 * Math.PI / 180;
           meshTarget.y -= 35 * Math.PI / 180;
         }
-        if (input.left) {
+        if (this.input.left) {
           wheelTarget.y += 35 * Math.PI / 180;
           meshTarget.y += 35 * Math.PI / 180;
         }
@@ -64775,7 +64766,7 @@ class VehicleBody {
       // play tirescreech based on slip angle
       if (this.wheels[i].latSlipSound) {
         if (Math.abs(slipAngle) > 5 && this.wheels[i].isGrounded && this.wheels[i].previousForwardVelocity.length() > 0.2) {
-          this.wheels[i].latSlipSound.set({ volume: -100 + Math.abs(slipAngle / 90 * 64), frequency: Math.max(1000, Math.min(2000, appliedSlipForce / 4)) });
+          this.wheels[i].latSlipSound.set({ volume: -100 + Math.max(42, Math.abs(slipAngle)), frequency: Math.max(1200, Math.min(1600, appliedSlipForce / 4)) });
         } else {
           this.wheels[i].latSlipSound.set({ volume: -100 });
         }
@@ -64819,15 +64810,189 @@ class VehicleBody {
     dragForce.set(aeroDrag.x, aeroDrag.y, aeroDrag.z);
     // this.body.applyForce(dragForce);
   }
+
+  // update entire vehicle with above functions
+  updateVehicle(delta) {
+    this.updateEngine(delta);
+    this.updateWheels(delta);
+    this.calcSuspension();
+    this.calcWeightTransfer();
+    this.calcSteering(delta);
+    this.applyDrag();
+  }
 }
 
+module.exports = { VehicleBody };
+},{"./Curve.js":4,"cannon-es":1,"three":2,"tone":3}],7:[function(require,module,exports){
+// import our library dependencies
+const THREE = require('three');
+// const { GLTFLoader } = require('three/examples/jsm/loaders/GLTFLoader.js');
+const CANNON = require('cannon-es');
+// const CannonDebugger = require('cannon-es-debugger');
+const TONE = require('tone');
+
+// import our custom classes / objects
+const { RigidBody } = require('./classes/RigidBody.js');
+const { VehicleBody } = require('./classes/Vehicle.js');
+
+/***********************************************************************************/
+// load textures
+// load our wheel texture
+const checker = new THREE.TextureLoader().load("./src/textures/wheel_test_tex.jpg");
+checker.wrapS = THREE.RepeatWrapping;
+checker.wrapT = THREE.RepeatWrapping;
+checker.repeat.set(1000, 1000);
+
 /*************************************************************************/
+// initalize our model loader
+// const loader = new THREE.GLTFLoader();
+
+// initialize cannon-es
+const physicsWorld = new CANNON.World({
+  gravity: new CANNON.Vec3(0, -9.8, 0),
+});
+
 // construct our world scene and setup three.js
 const threejs = new THREE.WebGLRenderer();
 threejs.shadowMap.enabled = true;
 threejs.shadowMap.type = THREE.PCFSoftShadowMap;
 threejs.setPixelRatio(window.devicePixelRatio);
 threejs.setSize(window.innerWidth * 0.6, window.innerHeight * 0.6);
+
+// setup our internal clock
+const t = new THREE.Clock();
+
+// create a scene
+const scene = new THREE.Scene();
+
+// setup camera
+let viewRatio = window.innerWidth / window.innerHeight;
+const camera = new THREE.OrthographicCamera(viewRatio * 20 / -2, viewRatio * 20 / 2, 20 / 2, 20 / -2, -1000, 1000);
+camera.position.set(10, 10, 10);
+camera.lookAt(0, 0, 0);
+// window resize function (resizes canvas)
+window.addEventListener("resize", () => {
+  viewRatio = window.innerWidth / window.innerHeight;
+  camera.left = viewRatio * 20 / -2;
+  camera.right = viewRatio * 20 / 2;
+  camera.top = 20 / 2;
+  camera.bottom = 20 / -2;
+  camera.updateProjectionMatrix();
+  threejs.setSize(window.innerWidth * 0.6, window.innerHeight * 0.6);
+}, false);
+
+// setup lights
+const sun = new THREE.DirectionalLight(0xFFFFFF);
+sun.position.set(0, 10, 0);
+sun.target.position.set(0, 0, 0);
+sun.castShadow = true;
+sun.shadow.bias = 0;
+sun.shadow.mapSize.width = 256;
+sun.shadow.mapSize.height = 256;
+sun.shadow.camera.near = 1.0;
+sun.shadow.camera.far = 200;
+let shadowCamera = 10;
+sun.shadow.camera.left = -shadowCamera;
+sun.shadow.camera.right = shadowCamera;
+sun.shadow.camera.top = shadowCamera;
+sun.shadow.camera.bottom = -shadowCamera;
+const ambient = new THREE.AmbientLight(0x606060);
+// add the lights to our scene
+scene.add(sun, sun.target, ambient);
+
+// setup basic test meshes
+const plane = new THREE.Mesh(
+  new THREE.PlaneGeometry(10000, 10000, 1, 1),
+  new THREE.MeshStandardMaterial({
+    color: 0xFFFFFF,
+    map: checker,
+  }));
+plane.castShadow = false;
+plane.receiveShadow = true;
+plane.rotation.x = -Math.PI / 2;
+// setup ground rigidbody
+const rbGround = new RigidBody();
+rbGround.createBox(0, new THREE.Vector3(plane.position.x, plane.position.y, plane.position.z), plane.quaternion, new THREE.Vector3(10000, 10000, 0.01));
+physicsWorld.addBody(rbGround.body);
+scene.add(plane);
+
+// create our testing vehicle
+let centerOfGravity = new THREE.Vector3(0, 0.4, 0);
+const vehicleGroup = new THREE.Group();
+const box = new THREE.Mesh(
+  new THREE.BoxGeometry(1.65, 1.23, 4.1),
+  new THREE.MeshStandardMaterial({
+    color: 0x408080
+  }));
+box.position.copy(centerOfGravity); // acount for offset
+box.castShadow = true;
+box.receiveShadow = true;
+// load our car model
+// loader.load('../models/vehicles/tinycar_01.glb', (gltf) => {
+//   gltf.position.copy(centerOfGravity);
+//   gltf.castShadow = true;
+//   gltf.receiveShadow = true;
+//   vehicleGroup.add(gltf);
+// }, undefined, (error) => { console.error(error) });
+// add box or model to vehicle parent
+vehicleGroup.add(box);
+scene.add(vehicleGroup);
+vehicleGroup.position.set(0, 5, 0);
+// setup rigidbody for this box, with an input object to pass in user inputs
+const input = {
+  accel: false,
+  shiftDown: false,
+  shiftUp: false,
+  brake: false,
+  left: false,
+  right: false,
+}
+const vehicle = new VehicleBody(vehicleGroup, input, [plane], scene);
+vehicle.createBox(1400, vehicleGroup.position, vehicleGroup.quaternion, new THREE.Vector3(1.65, 1.23, 4.1), centerOfGravity);
+// create wheels by using an array of relative wheel positions
+vehicle.createWheels([
+  { pos: new THREE.Vector3(vehicle.size.x / 2, -vehicle.size.y / 1.5, vehicle.size.z / 3), suspensionStrength: 18000, suspensionDamping: 800, wheelRadius: 0.33, powered: true, steering: true, brakes: true },
+  { pos: new THREE.Vector3(-vehicle.size.x / 2, -vehicle.size.y / 1.5, vehicle.size.z / 3), suspensionStrength: 18000, suspensionDamping: 800, wheelRadius: 0.33, powered: true, steering: true, brakes: true },
+  { pos: new THREE.Vector3(vehicle.size.x / 2, -vehicle.size.y / 1.5, -vehicle.size.z / 3), suspensionStrength: 18000, suspensionDamping: 800, wheelRadius: 0.33, powered: false, steering: false, brakes: true },
+  { pos: new THREE.Vector3(-vehicle.size.x / 2, -vehicle.size.y / 1.5, -vehicle.size.z / 3), suspensionStrength: 18000, suspensionDamping: 800, wheelRadius: 0.33, powered: false, steering: false, brakes: true }
+]);
+physicsWorld.addBody(vehicle.body);
+
+// setup our rigidbodies list
+const rigidBodies = [{ mesh: vehicleGroup, rigidBody: vehicle }];
+
+// setup cannon debugger
+// const cannonDebugger = new CannonDebugger(scene, physicsWorld);
+
+// setup step function (update function)
+function step(delta) {
+  // update our vehicle
+  vehicle.updateVehicle(delta);
+
+  physicsWorld.fixedStep(1 / 120);
+  // cannonDebugger.update();
+
+  // make meshes match physics world
+  for (let i = 0; i < rigidBodies.length; i++) {
+    rigidBodies[i].mesh.position.copy(rigidBodies[i].rigidBody.body.position);
+    rigidBodies[i].mesh.quaternion.copy(rigidBodies[i].rigidBody.body.quaternion);
+  }
+
+  // update camera to follow vehicle
+  camera.position.set(vehicleGroup.position.x + 10, vehicleGroup.position.y + 10, vehicleGroup.position.z + 10);
+  // update directional light
+  sun.position.set(vehicleGroup.position.x, vehicleGroup.position.y + 5, vehicleGroup.position.z);
+  sun.target.position.set(vehicleGroup.position.x, vehicleGroup.position.y, vehicleGroup.position.z)
+}
+
+// render function
+function renderFrame() {
+  requestAnimationFrame(() => {
+    step(t.getDelta()); // call our update function
+    threejs.render(scene, camera);
+    renderFrame();
+  });
+}
 
 // create a div to hold the canvas
 let canvasDiv = document.createElement("div");
@@ -64871,10 +65036,10 @@ toggleDebugEl.className = "toggle";
 toggleWheelsEl.className = "toggle";
 // add functionality to toggles
 toggleDebugEl.addEventListener("click", () => {
-  vehicleBox.toggleDebug();
+  vehicle.toggleDebug();
 });
 toggleWheelsEl.addEventListener("click", () => {
-  vehicleBox.toggleWheelVisibility();
+  vehicle.toggleWheelVisibility();
 });
 
 canvasDiv.appendChild(controlDiv);
@@ -64882,64 +65047,8 @@ canvasDiv.appendChild(controlDiv);
 document.getElementById('game-div').append(toggleDebugEl, toggleWheelsEl);
 // add the canvas body to the page
 document.getElementById('game-div').appendChild(canvasDiv);
-// create our canvas
-// const chartCanvas = document.createElement("canvas");
-// chartCanvas.id = "curveChart";
-// document.getElementById('chart-div').appendChild(chartCanvas);
-// // plot torque curve to chart.js canvas
-// const context = document.getElementById('curveChart');
-// const torqueChart = new Chart(context, {
-//   type: 'line',
-//   data: {
-//     datasets: [
-//       {
-//       label: 'Engine Torque',
-//       data: torquePoints,
-//       fill: false,
-//       borderColor: 'rgb(255, 0, 0)',
-//       tension: 0.5
-//       },
-//       {
-//         label: 'Current Torque',
-//         data: currentEnginePoint,
-//         fill: true,
-//         borderColor: 'rgb(0, 255, 0)',
-//         tension: 0
-//       }
-//     ]
-//   },
-//   options: {
-//     scales: {
-//       y: {
-//         beginAtZero: true,
-//         type: 'linear'
-//       },
-//       x: {
-//         beginAtZero: true,
-//         type: 'linear'
-//       }
-//     }
-//   }
-// });
-
-// window resize function (resizes canvas)
-window.addEventListener("resize", () => {
-  viewRatio = window.innerWidth / window.innerHeight;
-  camera.left = viewRatio * 20 / -2;
-  camera.right = viewRatio * 20 / 2;
-  camera.top = 20 / 2;
-  camera.bottom = 20 / -2;
-  camera.updateProjectionMatrix();
-  threejs.setSize(window.innerWidth * 0.6, window.innerHeight * 0.6);
-}, false);
 
 // register an event handler for keyboard input
-const input = {
-  accel: false,
-  brake: false,
-  left: false,
-  right: false,
-}
 document.addEventListener('keydown', (e) => {
   switch (e.key) {
     case "w":
@@ -65071,159 +65180,29 @@ document.addEventListener("contextmenu", (e) => {
   return false;
 });
 
-// setup our internal clock
-const t = new THREE.Clock();
-
-// create a scene
-const scene = new THREE.Scene();
-
-// setup camera
-let viewRatio = window.innerWidth / window.innerHeight;
-const camera = new THREE.OrthographicCamera(viewRatio * 20 / -2, viewRatio * 20 / 2, 20 / 2, 20 / -2, -1000, 1000);
-camera.position.set(10, 10, 10);
-camera.lookAt(0, 0, 0);
-
-// setup lights
-const sun = new THREE.DirectionalLight(0xFFFFFF);
-sun.position.set(0, 10, 0);
-sun.target.position.set(0, 0, 0);
-sun.castShadow = true;
-sun.shadow.bias = 0;
-sun.shadow.mapSize.width = 256;
-sun.shadow.mapSize.height = 256;
-sun.shadow.camera.near = 1.0;
-sun.shadow.camera.far = 200;
-let shadowCamera = 10;
-sun.shadow.camera.left = -shadowCamera;
-sun.shadow.camera.right = shadowCamera;
-sun.shadow.camera.top = shadowCamera;
-sun.shadow.camera.bottom = -shadowCamera;
-
-const ambient = new THREE.AmbientLight(0x606060);
-
-// setup basic test meshes
-const plane = new THREE.Mesh(
-  new THREE.PlaneGeometry(10000, 10000, 1, 1),
-  new THREE.MeshStandardMaterial({
-    color: 0xFFFFFF,
-    map: checker,
-  }));
-plane.castShadow = false;
-plane.receiveShadow = true;
-plane.rotation.x = -Math.PI / 2;
-// setup ground rigidbody
-const rbGround = new RigidBody();
-rbGround.createBox(0, new THREE.Vector3(plane.position.x, plane.position.y, plane.position.z), plane.quaternion, new THREE.Vector3(10000, 10000, 0.01));
-physicsWorld.addBody(rbGround.body);
-
-// create our testing vehicle
-let centerOfGravity = new THREE.Vector3(0, 0.4, 0);
-const vehicleGroup = new THREE.Group();
-const box = new THREE.Mesh(
-  new THREE.BoxGeometry(1.65, 1.23, 4.1),
-  new THREE.MeshStandardMaterial({
-    color: 0x408080
-  }));
-box.position.copy(centerOfGravity); // acount for offset
-box.castShadow = true;
-box.receiveShadow = true;
-// load our car model
-// loader.load('../models/vehicles/tinycar_01.glb', (gltf) => {
-//   gltf.position.copy(centerOfGravity);
-//   gltf.castShadow = true;
-//   gltf.receiveShadow = true;
-//   vehicleGroup.add(gltf);
-// }, undefined, (error) => { console.error(error) });
-// add box or model to vehicle parent
-vehicleGroup.add(box);
-vehicleGroup.position.set(0, 5, 0);
-// setup rigidbody for this box
-const vehicleBox = new VehicleBody(vehicleGroup);
-vehicleBox.createBox(1400, vehicleGroup.position, vehicleGroup.quaternion, new THREE.Vector3(1.65, 1.23, 4.1), centerOfGravity);
-// create wheels by using an array of relative wheel positions
-vehicleBox.createWheels([
-  { pos: new THREE.Vector3(vehicleBox.size.x / 2, -vehicleBox.size.y / 1.5, vehicleBox.size.z / 3), suspensionStrength: 18000, suspensionDamping: 800, wheelRadius: 0.33, powered: true, steering: true, brakes: true },
-  { pos: new THREE.Vector3(-vehicleBox.size.x / 2, -vehicleBox.size.y / 1.5, vehicleBox.size.z / 3), suspensionStrength: 18000, suspensionDamping: 800, wheelRadius: 0.33, powered: true, steering: true, brakes: true },
-  { pos: new THREE.Vector3(vehicleBox.size.x / 2, -vehicleBox.size.y / 1.5, -vehicleBox.size.z / 3), suspensionStrength: 18000, suspensionDamping: 800, wheelRadius: 0.33, powered: false, steering: false, brakes: true },
-  { pos: new THREE.Vector3(-vehicleBox.size.x / 2, -vehicleBox.size.y / 1.5, -vehicleBox.size.z / 3), suspensionStrength: 18000, suspensionDamping: 800, wheelRadius: 0.33, powered: false, steering: false, brakes: true }
-]);
-physicsWorld.addBody(vehicleBox.body);
-
-// setup our rigidbodies list
-const rigidBodies = [{ mesh: vehicleGroup, rigidBody: vehicleBox }];
-
-// add objects to scene
-scene.add(sun, sun.target, ambient, plane, vehicleGroup);
-
-// setup cannon debugger
-// const cannonDebugger = new CannonDebugger(scene, physicsWorld);
-
-// setup step function (update function)
-function step(delta) {
-  // update our vehicle
-  vehicleBox.updateEngine(delta);
-  vehicleBox.updateWheels(delta);
-  vehicleBox.calcWeightTransfer();
-  vehicleBox.calcSteering(delta); // needs delta time to get rpm
-  vehicleBox.calcSuspension();
-  vehicleBox.applyDrag();
-
-  // update current engine point
-  currentEnginePoint = [{ x: vehicleBox.currentRPM / vehicleBox.maxRPM, y: vehicleBox.appliedTorque }];
-  // torqueChart.data.datasets[1].data = currentEnginePoint;
-  // torqueChart.update();
-
-  physicsWorld.step(1 / 120, delta, 10);
-  // cannonDebugger.update();
-
-  // make meshes match physics world
-  for (let i = 0; i < rigidBodies.length; i++) {
-    rigidBodies[i].mesh.position.copy(rigidBodies[i].rigidBody.body.position);
-    rigidBodies[i].mesh.quaternion.copy(rigidBodies[i].rigidBody.body.quaternion);
-  }
-
-  // update camera to follow vehicle
-  camera.position.set(vehicleGroup.position.x + 10, vehicleGroup.position.y + 10, vehicleGroup.position.z + 10);
-  // camera.position.set(vehicleGroup.position.x, vehicleGroup.position.y + 0.6, vehicleGroup.position.z);
-  // camera.rotation.set(-vehicleGroup.rotation.x, vehicleGroup.rotation.y, -vehicleGroup.rotation.z);
-  // camera.rotateOnWorldAxis(new THREE.Vector3(0, 1, 0), Math.PI);
-  // update directional light
-  sun.position.set(vehicleGroup.position.x, vehicleGroup.position.y + 5, vehicleGroup.position.z);
-  sun.target.position.set(vehicleGroup.position.x, vehicleGroup.position.y, vehicleGroup.position.z)
-}
-
-// render function
-function renderFrame() {
-  requestAnimationFrame(() => {
-    step(t.getDelta()); // call our update function
-    threejs.render(scene, camera);
-    renderFrame();
-  });
-}
-
-// call our renderFrame function
-renderFrame();
-
 // listen for a user event to trigger audio
 let audioStarted = false;
 document.addEventListener('click', async () => {
   if (!audioStarted) {
     await TONE.start();
-    vehicleBox.createAudio();
+    vehicle.createAudio();
     audioStarted = true;
   } else {
-    vehicleBox.startAudio();
+    vehicle.startAudio();
   }
 });
 
 // mute audio when window not in focus
 document.addEventListener('visibilitychange', () => {
   if (document.visibilityState === 'visible') {
-    vehicleBox.startAudio();
+    vehicle.startAudio();
   } else {
-    vehicleBox.stopAudio();
+    vehicle.stopAudio();
   }
 });
-},{"./classes/curve.js":4,"cannon-es":1,"three":2,"tone":3}],6:[function(require,module,exports){
 
-},{}]},{},[5]);
+// finally, call our renderFrame function and start the app
+renderFrame();
+},{"./classes/RigidBody.js":5,"./classes/Vehicle.js":6,"cannon-es":1,"three":2,"tone":3}],8:[function(require,module,exports){
+
+},{}]},{},[7]);
