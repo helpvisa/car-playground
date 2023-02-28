@@ -80,7 +80,7 @@ class VehicleBody {
     const oscillatorIdle = listener.context.createOscillator();
     const periodicIdle = listener.context.createPeriodicWave([1, 1, 0, 1, 1], [0, 1, -1, -1, 0]);
     //oscillatorIdle.setPeriodicWave(periodicIdle);
-    oscillatorIdle.type = 'sine';
+    oscillatorIdle.type = 'sawtooth';
     oscillatorIdle.frequency.setValueAtTime(this.currentRPM / 48, listener.context.currentTime);
     this.idleSound.setNodeSource(oscillatorIdle);
     this.idleSound.setRefDistance(20);
@@ -91,7 +91,7 @@ class VehicleBody {
     const oscillatorAccel = listener.context.createOscillator();
     const periodicAccel = listener.context.createPeriodicWave([-1, -1, 0, 1, -1], [0, 0, 1, 0.5, 0.5]);
     //oscillatorAccel.setPeriodicWave(periodicAccel);
-    oscillatorAccel.type = 'triangle';
+    oscillatorAccel.type = 'sine';
     oscillatorAccel.frequency.setValueAtTime(this.currentRPM / 24, listener.context.currentTime);
     this.acceleratorSound.setNodeSource(oscillatorAccel);
     this.acceleratorSound.setRefDistance(20);
@@ -303,8 +303,10 @@ class VehicleBody {
 
     // clamp RPM values
     this.currentRPM = Math.max(this.minRPM, Math.min(this.maxRPM, this.currentRPM));
-    this.idleSound.source.frequency.linearRampToValueAtTime(this.currentRPM / 48, listener.context.currentTime + 0.1);
-    this.acceleratorSound.source.frequency.linearRampToValueAtTime(this.currentRPM / 24, listener.context.currentTime + 0.1);
+    this.idleSound.source.frequency.setValueAtTime(this.currentRPM / 40, listener.context.currentTime);
+    this.idleSound.source.frequency.linearRampToValueAtTime(this.currentRPM / 40, listener.context.currentTime + 0.1);
+    this.acceleratorSound.source.frequency.setValueAtTime(this.currentRPM / 20, listener.context.currentTime);
+    this.acceleratorSound.source.frequency.linearRampToValueAtTime(this.currentRPM / 20, listener.context.currentTime + 0.1);
     this.idleSound.setVolume(Math.max(0.5, (1 - this.throttle) * 0.6));
     this.acceleratorSound.setVolume(Math.max(0.4, this.throttle * 0.5));
 
@@ -996,10 +998,10 @@ const vehicleBox = new VehicleBody(vehicleGroup);
 vehicleBox.createBox(1400, vehicleGroup.position, vehicleGroup.quaternion, new THREE.Vector3(1.65, 1.23, 4.1), centerOfGravity);
 // create wheels by using an array of relative wheel positions
 vehicleBox.createWheels([
-  { pos: new THREE.Vector3(vehicleBox.size.x / 2, -vehicleBox.size.y / 1.5, vehicleBox.size.z / 3), suspensionStrength: 12000, suspensionDamping: 800, wheelRadius: 0.33, powered: true, steering: true, brakes: true },
-  { pos: new THREE.Vector3(-vehicleBox.size.x / 2, -vehicleBox.size.y / 1.5, vehicleBox.size.z / 3), suspensionStrength: 12000, suspensionDamping: 800, wheelRadius: 0.33, powered: true, steering: true, brakes: true },
-  { pos: new THREE.Vector3(vehicleBox.size.x / 2, -vehicleBox.size.y / 1.5, -vehicleBox.size.z / 3), suspensionStrength: 12000, suspensionDamping: 800, wheelRadius: 0.33, powered: false, steering: false, brakes: true },
-  { pos: new THREE.Vector3(-vehicleBox.size.x / 2, -vehicleBox.size.y / 1.5, -vehicleBox.size.z / 3), suspensionStrength: 12000, suspensionDamping: 800, wheelRadius: 0.33, powered: false, steering: false, brakes: true }
+  { pos: new THREE.Vector3(vehicleBox.size.x / 2, -vehicleBox.size.y / 1.5, vehicleBox.size.z / 3), suspensionStrength: 15000, suspensionDamping: 800, wheelRadius: 0.33, powered: true, steering: true, brakes: true },
+  { pos: new THREE.Vector3(-vehicleBox.size.x / 2, -vehicleBox.size.y / 1.5, vehicleBox.size.z / 3), suspensionStrength: 15000, suspensionDamping: 800, wheelRadius: 0.33, powered: true, steering: true, brakes: true },
+  { pos: new THREE.Vector3(vehicleBox.size.x / 2, -vehicleBox.size.y / 1.5, -vehicleBox.size.z / 3), suspensionStrength: 15000, suspensionDamping: 800, wheelRadius: 0.33, powered: false, steering: false, brakes: true },
+  { pos: new THREE.Vector3(-vehicleBox.size.x / 2, -vehicleBox.size.y / 1.5, -vehicleBox.size.z / 3), suspensionStrength: 15000, suspensionDamping: 800, wheelRadius: 0.33, powered: false, steering: false, brakes: true }
 ]);
 physicsWorld.addBody(vehicleBox.body);
 
