@@ -3,6 +3,7 @@ const THREE = require('three');
 // const { GLTFLoader } = require('three/examples/jsm/loaders/GLTFLoader.js');
 const CANNON = require('cannon-es');
 // const CannonDebugger = require('cannon-es-debugger');
+const TONE = require('tone');
 const { torqueCurve, pacejkaCurve } = require('./classes/curve.js');
 
 // initalize our model loader
@@ -14,7 +15,7 @@ const physicsWorld = new CANNON.World({
 });
 
 /***********************************************************************************/
-let currentEnginePoint = [{x: 0, y: 0}];
+let currentEnginePoint = [{ x: 0, y: 0 }];
 // load textures
 // load our wheel texture
 const checker = new THREE.TextureLoader().load("./src/textures/wheel_test_tex.jpg");
@@ -40,7 +41,7 @@ class RigidBody {
     this.size = size;
     const cannonSize = new CANNON.Vec3(size.x * 0.5, size.y * 0.5, size.z * 0.5);
     this.shape = new CANNON.Box(cannonSize);
-    this.body = new CANNON.Body({mass: mass, shape: this.shape});
+    this.body = new CANNON.Body({ mass: mass, shape: this.shape });
 
     // add to compound shape with com offset
     this.body.position.set(pos.x, pos.y, pos.z);
@@ -75,34 +76,13 @@ class VehicleBody {
     this.appliedTorque = 0;
     this.numPoweredWheels = 0;
 
-    // setup engine audio / oscillator
-    this.idleSound = new THREE.PositionalAudio(listener); // assign to our camera's listener
-    const oscillatorIdle = listener.context.createOscillator();
-    const periodicIdle = listener.context.createPeriodicWave([1, 1, 0, 1, 1], [0, 1, -1, -1, 0]);
-    //oscillatorIdle.setPeriodicWave(periodicIdle);
-    oscillatorIdle.type = 'sawtooth';
-    oscillatorIdle.frequency.setValueAtTime(this.currentRPM / 48, listener.context.currentTime);
-    this.idleSound.setNodeSource(oscillatorIdle);
-    this.idleSound.setRefDistance(20);
-    this.idleSound.setVolume(0.5);
-    this.parent.add(this.idleSound);
-    // accelerator
-    this.acceleratorSound = new THREE.PositionalAudio(listener);
-    const oscillatorAccel = listener.context.createOscillator();
-    const periodicAccel = listener.context.createPeriodicWave([-1, -1, 0, 1, -1], [0, 0, 1, 0.5, 0.5]);
-    //oscillatorAccel.setPeriodicWave(periodicAccel);
-    oscillatorAccel.type = 'sine';
-    oscillatorAccel.frequency.setValueAtTime(this.currentRPM / 24, listener.context.currentTime);
-    this.acceleratorSound.setNodeSource(oscillatorAccel);
-    this.acceleratorSound.setRefDistance(20);
-    this.acceleratorSound.setVolume(0.2);
-    this.parent.add(this.acceleratorSound);
-
+    // is the vehicle emitting sound?
+    this.isPlayingAudio = false;
 
     // setup debug line materials
     this.drawDebug = false;
     this.springMat = new THREE.LineBasicMaterial({ color: 0x00FF00 });
-    this.springMat.depthTest = false; 
+    this.springMat.depthTest = false;
     this.accelMat = new THREE.LineBasicMaterial({ color: 0x0000FF });
     this.accelMat.depthTest = false;
     this.slipMat = new THREE.LineBasicMaterial({ color: 0xFF0000 });
@@ -115,7 +95,7 @@ class VehicleBody {
     this.mass = mass;
     this.centerOfGravity = com;
 
-    let compoundShape = new CANNON.Body({mass: mass});
+    let compoundShape = new CANNON.Body({ mass: mass });
 
     this.size = size;
     const cannonSize = new CANNON.Vec3(size.x * 0.5, size.y * 0.5, size.z * 0.5);
@@ -127,6 +107,61 @@ class VehicleBody {
     compoundShape.quaternion.set(rot.x, rot.y, rot.z, rot.w);
     // store as body for reference later
     this.body = compoundShape;
+  }
+
+  // create our tone audio sources
+  createAudio() {
+    // setup engine audio / oscillator
+    this.idleSound = new TONE.Oscillator(this.currentRPM / 40, 'sawtooth12').toDestination();
+    this.idleSound.set({ volume: -12 });
+    // accelerator
+    this.acceleratorSound = new TONE.Oscillator(this.currentRPM / 30, 'sawtooth8').toDestination();
+    this.acceleratorSound.set({ volume: -12 });
+
+    // start the tones
+    this.idleSound.start();
+    this.acceleratorSound.start();
+
+    // now go through each wheel and add an audio source for wheel slip
+    for (let i = 0; i < this.wheels.length; i++) {
+      this.wheels[i].longSlipSound = new TONE.Oscillator(1400, 'sawtooth32').toDestination();
+      this.wheels[i].longSlipSound.set({ volume: -100 });
+      this.wheels[i].longSlipSound.start();
+
+      this.wheels[i].latSlipSound = new TONE.Oscillator(1400, 'sine32').toDestination();
+      this.wheels[i].latSlipSound.set({ volume: -100 });
+      this.wheels[i].latSlipSound.start();
+    }
+  }
+
+  // mute or re-enable audio
+  startAudio() {
+    if (this.idleSound && this.acceleratorSound && !this.isPlayingAudio) {
+      this.idleSound.start();
+      this.acceleratorSound.start();
+
+      // loop through wheels
+      for (let i = 0; i < this.wheels.length; i++) {
+        this.wheels[i].longSlipSound.start();
+        this.wheels[i].latSlipSound.start();
+      }
+
+      this.isPlayingAudio = true;
+    }
+  }
+  stopAudio() {
+    if (this.idleSound && this.acceleratorSound && this.isPlayingAudio) {
+      this.idleSound.stop();
+      this.acceleratorSound.stop();
+
+      // loop through wheels
+      for (let i = 0; i < this.wheels.length; i++) {
+        this.wheels[i].longSlipSound.stop();
+        this.wheels[i].latSlipSound.stop();
+      }
+
+      this.isPlayingAudio = false;
+    }
   }
 
   // get transform position
@@ -240,12 +275,12 @@ class VehicleBody {
       const wheelVisual = new THREE.Mesh(
         new THREE.CylinderGeometry(wheelArray[i].wheelRadius, wheelArray[i].wheelRadius, 0.225),
         new THREE.MeshStandardMaterial({
-        color: 0xFFFFFF,
-        map: wheelTex,
-      }))
+          color: 0xFFFFFF,
+          map: wheelTex,
+        }))
       wheelVisual.castShadow = true;
       wheel.mesh.add(wheelVisual);
-      wheel.mesh.rotation.z = 90 * Math.PI/180;
+      wheel.mesh.rotation.z = 90 * Math.PI / 180;
       // add the mesh to the parent group
       this.parent.add(wheel.obj);
       this.parent.add(wheel.mesh);
@@ -294,7 +329,7 @@ class VehicleBody {
     for (let i = 0; i < this.wheels.length; i++) {
       if (this.wheels[i].powered) {
         averageSpeed += this.wheels[i].angularVelocity * this.wheels[i].wheelRadius;
-        averageRPM += (this.wheels[i].angularVelocity / (2*Math.PI)) * 60;
+        averageRPM += (this.wheels[i].angularVelocity / (2 * Math.PI)) * 60;
       }
     }
     averageSpeed /= this.numPoweredWheels; // divide by number of wheels connected to engine
@@ -305,17 +340,19 @@ class VehicleBody {
     this.currentRPM = Math.max(this.minRPM, Math.min(this.maxRPM, this.currentRPM));
 
     // update audio ramps
-    this.idleSound.source.frequency.setTargetAtTime(this.currentRPM / 40, listener.context.currentTime + delta, 0.015);
-    this.acceleratorSound.source.frequency.setTargetAtTime(this.currentRPM / 20, listener.context.currentTime + delta, 0.015);
-    this.idleSound.setVolume(Math.max(0.5, (1 - this.throttle) * 0.6));
-    this.acceleratorSound.setVolume(Math.max(0.4, this.throttle * 0.5));
+    if (this.idleSound && this.acceleratorSound) {
+      this.idleSound.set({ frequency: this.currentRPM / 40 });
+      this.acceleratorSound.set({ frequency: this.currentRPM / 30 });
+      this.idleSound.set({ volume: -12 - (this.throttle * 2) });
+      this.acceleratorSound.set({ volume: -14 + this.throttle * 5 });
+    }
 
     // look up torque curve
     this.appliedTorque = torqueCurve.getValueAtPos((this.currentRPM) / this.maxRPM) * this.throttle;
 
     // update OSD
     let gearText = "1st";
-    switch(this.currentGear) {
+    switch (this.currentGear) {
       case 0:
         gearText = 'Reverse';
         break;
@@ -376,10 +413,12 @@ class VehicleBody {
       this.parent.attach(this.wheels[i].mesh); // reattach to parent group for rotation
 
       // compute this wheel's angular acceleration and velocity
+      let directionalForwardVelocityLength = this.wheels[i].previousForwardVelocity.length();
       if (this.wheels[i].isGrounded) {
         this.wheels[i].angularVelocity = this.wheels[i].previousForwardVelocity.length() / this.wheels[i].wheelRadius;
         if (this.wheels[i].previousForwardVelocity.dot(this.wheels[i].forwardDir) < 0) {
           this.wheels[i].angularVelocity *= -1;
+          directionalForwardVelocityLength *= -1;
         }
       }
 
@@ -395,7 +434,7 @@ class VehicleBody {
       let engineAccel = 0;
       if (this.wheels[i].powered) {
         // calculate max allowed angular velocity at current gear
-        let maxAllowedWheelVelocity = (this.maxRPM * (2*Math.PI) / 60 / this.gearRatio / this.finalDrive);
+        let maxAllowedWheelVelocity = (this.maxRPM * (2 * Math.PI) / 60 / this.gearRatio / this.finalDrive);
 
         if (Math.abs(this.wheels[i].angularVelocity) > Math.abs(maxAllowedWheelVelocity)) {
           this.wheels[i].angularVelocity = maxAllowedWheelVelocity;
@@ -423,8 +462,8 @@ class VehicleBody {
       if (this.wheels[i].previousForwardVelocity.length() !== 0) {
         if (this.wheels[i].isGrounded) {
           // calculate slip ratio based on torque applied by engine / braking
-          slipRatio = ((this.wheels[i].angularVelocity + ((engineAccel + brakingAccel) / wheelInertia * delta)) * this.wheels[i].wheelRadius - this.wheels[i].previousForwardVelocity.length())
-          / ((this.wheels[i].angularVelocity + ((engineAccel) / wheelInertia * delta)) * this.wheels[i].wheelRadius);
+          slipRatio = ((this.wheels[i].angularVelocity + ((engineAccel + brakingAccel) / wheelInertia * delta)) * this.wheels[i].wheelRadius - directionalForwardVelocityLength)
+            / ((this.wheels[i].angularVelocity + (engineAccel / wheelInertia * delta)) * this.wheels[i].wheelRadius);
           slipRatio = Math.max(-1, Math.min(1, slipRatio));
         } else if (this.brake > 0) {
           slipRatio = -1;
@@ -448,6 +487,15 @@ class VehicleBody {
       // rotate the wheel mesh
       if (slipRatio > -1) {
         this.wheels[i].mesh.children[0].rotation.y -= (this.wheels[i].angularVelocity) * delta;
+      }
+
+      // trigger wheel slip tire screech audio
+      if (this.wheels[i].longSlipSound) {
+        if (Math.abs(slipRatio) > 0.1 && this.wheels[i].isGrounded && this.wheels[i].previousForwardVelocity.length() > 0.2) {
+          this.wheels[i].longSlipSound.set({ volume: -100 + Math.abs(50 * slipRatio), frequency: Math.max(1000, Math.min(2000, 200 * this.wheels[i].previousForwardVelocity.length())) });
+        } else {
+          this.wheels[i].longSlipSound.set({ volume: -100 });
+        }
       }
 
       // compute debug bounding spheres
@@ -492,7 +540,7 @@ class VehicleBody {
         velocity.projectOnVector(new THREE.Vector3(0, 1, 0));
         // use it to calc our spring damping force
         let dampingForce = velocity.multiplyScalar(-this.wheels[i].suspensionDamping); // invert damping force to negate suspension force
-        
+
         // cumuluative suspension force
         let cumulativeForce = springForce.clone();
         cumulativeForce.add(dampingForce);
@@ -544,7 +592,7 @@ class VehicleBody {
     for (let i = 0; i < this.wheels.length; i++) {
       // find directional vectors
       let wheelWorldQuat = new THREE.Quaternion(); // get the world instead of local quaternion
-      this.wheels[i].obj.getWorldQuaternion(wheelWorldQuat); 
+      this.wheels[i].obj.getWorldQuaternion(wheelWorldQuat);
       let forwardDir = new THREE.Vector3(0, 0, 1);
       forwardDir.applyQuaternion(wheelWorldQuat); // get forward-facing vector
       forwardDir.projectOnPlane(new THREE.Vector3(0, 1, 0));
@@ -560,12 +608,12 @@ class VehicleBody {
 
         // default rest position (no angle)
         if (input.right) {
-          wheelTarget.y -= 35 * Math.PI/180;
-          meshTarget.y -= 35 * Math.PI/180;
+          wheelTarget.y -= 35 * Math.PI / 180;
+          meshTarget.y -= 35 * Math.PI / 180;
         }
         if (input.left) {
-          wheelTarget.y += 35 * Math.PI/180;
-          meshTarget.y += 35 * Math.PI/180;
+          wheelTarget.y += 35 * Math.PI / 180;
+          meshTarget.y += 35 * Math.PI / 180;
         }
 
         let targetQuatWheel = new THREE.Quaternion();
@@ -574,8 +622,8 @@ class VehicleBody {
         targetQuatMesh.setFromEuler(meshTarget);
 
         // set wheel's rotation
-        this.wheels[i].obj.quaternion.rotateTowards(targetQuatWheel, 1.2 * Math.PI/180);
-        this.wheels[i].mesh.quaternion.rotateTowards(targetQuatMesh, 1.2 * Math.PI/180);
+        this.wheels[i].obj.quaternion.rotateTowards(targetQuatWheel, 1.2 * Math.PI / 180);
+        this.wheels[i].mesh.quaternion.rotateTowards(targetQuatMesh, 1.2 * Math.PI / 180);
       }
 
       // get velocity
@@ -587,8 +635,10 @@ class VehicleBody {
 
       // determine slip force
       let slipVelocity = velocity.clone();
+      let normForwardVel = forwardVelocity.clone();
       slipVelocity.normalize();
-      let slipAngle = 1;
+      normForwardVel.normalize();
+      let slipAngle = slipVelocity.angleTo(normForwardVel) * 180/Math.PI;
       this.wheels[i].slip = pacejkaCurve.getValueAtPos(slipAngle / 20); // replace with lookup curve; 20 degrees = max slip angle
       let appliedSlipForce = 0;
       appliedSlipForce = (this.wheels[i].slip * this.wheels[i].maxDriveForce) / this.wheels[i].wheelRadius
@@ -606,11 +656,6 @@ class VehicleBody {
       // apply acceleration and slip force based on traction circle and determine current wheel grip
       let acceleration = appliedAcceleration;
       let accelForce = new CANNON.Vec3();
-      // if brakes are being applied, don't apply braking relative to steering direction anymore
-      // if (this.brake) {
-      //   forwardDir = new THREE.Vector3(0, 0, 1);
-      //   forwardDir.applyQuaternion(transform.quaternion);
-      // }
       accelForce.set(
         (forwardDir.x * acceleration),
         (forwardDir.y * acceleration),
@@ -633,6 +678,15 @@ class VehicleBody {
       if (this.wheels[i].isGrounded) {
         this.body.applyForce(slipForce, btWheelPos); // we apply impulse for an immediate velocity change
         this.body.applyForce(accelForce, btWheelPos);
+      }
+
+      // play tirescreech based on slip angle
+      if (this.wheels[i].latSlipSound) {
+        if (Math.abs(slipAngle) > 5 && this.wheels[i].isGrounded && this.wheels[i].previousForwardVelocity.length() > 0.2) {
+          this.wheels[i].latSlipSound.set({ volume: -100 + Math.abs(slipAngle / 90 * 64), frequency: Math.max(1000, Math.min(2000, appliedSlipForce / 4)) });
+        } else {
+          this.wheels[i].latSlipSound.set({ volume: -100 });
+        }
       }
 
       // setup drawing of debug lines
@@ -929,15 +983,13 @@ document.addEventListener("contextmenu", (e) => {
 const t = new THREE.Clock();
 
 // create a scene
-const scene = new THREE.Scene(); 
+const scene = new THREE.Scene();
 
-// setup camera and audio listener
+// setup camera
 let viewRatio = window.innerWidth / window.innerHeight;
 const camera = new THREE.OrthographicCamera(viewRatio * 20 / -2, viewRatio * 20 / 2, 20 / 2, 20 / -2, -1000, 1000);
 camera.position.set(10, 10, 10);
 camera.lookAt(0, 0, 0);
-const listener = new THREE.AudioListener();
-camera.add(listener);
 
 // setup lights
 const sun = new THREE.DirectionalLight(0xFFFFFF);
@@ -998,22 +1050,22 @@ const vehicleBox = new VehicleBody(vehicleGroup);
 vehicleBox.createBox(1400, vehicleGroup.position, vehicleGroup.quaternion, new THREE.Vector3(1.65, 1.23, 4.1), centerOfGravity);
 // create wheels by using an array of relative wheel positions
 vehicleBox.createWheels([
-  { pos: new THREE.Vector3(vehicleBox.size.x / 2, -vehicleBox.size.y / 1.5, vehicleBox.size.z / 3), suspensionStrength: 15000, suspensionDamping: 800, wheelRadius: 0.33, powered: true, steering: true, brakes: true },
-  { pos: new THREE.Vector3(-vehicleBox.size.x / 2, -vehicleBox.size.y / 1.5, vehicleBox.size.z / 3), suspensionStrength: 15000, suspensionDamping: 800, wheelRadius: 0.33, powered: true, steering: true, brakes: true },
-  { pos: new THREE.Vector3(vehicleBox.size.x / 2, -vehicleBox.size.y / 1.5, -vehicleBox.size.z / 3), suspensionStrength: 15000, suspensionDamping: 800, wheelRadius: 0.33, powered: false, steering: false, brakes: true },
-  { pos: new THREE.Vector3(-vehicleBox.size.x / 2, -vehicleBox.size.y / 1.5, -vehicleBox.size.z / 3), suspensionStrength: 15000, suspensionDamping: 800, wheelRadius: 0.33, powered: false, steering: false, brakes: true }
+  { pos: new THREE.Vector3(vehicleBox.size.x / 2, -vehicleBox.size.y / 1.5, vehicleBox.size.z / 3), suspensionStrength: 18000, suspensionDamping: 800, wheelRadius: 0.33, powered: true, steering: true, brakes: true },
+  { pos: new THREE.Vector3(-vehicleBox.size.x / 2, -vehicleBox.size.y / 1.5, vehicleBox.size.z / 3), suspensionStrength: 18000, suspensionDamping: 800, wheelRadius: 0.33, powered: true, steering: true, brakes: true },
+  { pos: new THREE.Vector3(vehicleBox.size.x / 2, -vehicleBox.size.y / 1.5, -vehicleBox.size.z / 3), suspensionStrength: 18000, suspensionDamping: 800, wheelRadius: 0.33, powered: false, steering: false, brakes: true },
+  { pos: new THREE.Vector3(-vehicleBox.size.x / 2, -vehicleBox.size.y / 1.5, -vehicleBox.size.z / 3), suspensionStrength: 18000, suspensionDamping: 800, wheelRadius: 0.33, powered: false, steering: false, brakes: true }
 ]);
 physicsWorld.addBody(vehicleBox.body);
 
 // setup our rigidbodies list
-const rigidBodies = [{mesh: vehicleGroup, rigidBody: vehicleBox}];
+const rigidBodies = [{ mesh: vehicleGroup, rigidBody: vehicleBox }];
 
 // add objects to scene
 scene.add(sun, sun.target, ambient, plane, vehicleGroup);
 
 // setup cannon debugger
 // const cannonDebugger = new CannonDebugger(scene, physicsWorld);
- 
+
 // setup step function (update function)
 function step(delta) {
   // update our vehicle
@@ -1025,11 +1077,11 @@ function step(delta) {
   vehicleBox.applyDrag();
 
   // update current engine point
-  currentEnginePoint = [{x: vehicleBox.currentRPM / vehicleBox.maxRPM, y: vehicleBox.appliedTorque}];
+  currentEnginePoint = [{ x: vehicleBox.currentRPM / vehicleBox.maxRPM, y: vehicleBox.appliedTorque }];
   // torqueChart.data.datasets[1].data = currentEnginePoint;
   // torqueChart.update();
 
-  physicsWorld.step(1/120, delta, 10);
+  physicsWorld.step(1 / 120, delta, 10);
   // cannonDebugger.update();
 
   // make meshes match physics world
@@ -1061,7 +1113,22 @@ function renderFrame() {
 renderFrame();
 
 // listen for a user event to trigger audio
-document.addEventListener('click', () => {
-  vehicleBox.idleSound.source.start(listener.context.currentTime);
-  vehicleBox.acceleratorSound.source.start(listener.context.currentTime);
+let audioStarted = false;
+document.addEventListener('click', async () => {
+  if (!audioStarted) {
+    await TONE.start();
+    vehicleBox.createAudio();
+    audioStarted = true;
+  } else {
+    vehicleBox.startAudio();
+  }
+});
+
+// mute audio when window not in focus
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible') {
+    vehicleBox.startAudio();
+  } else {
+    vehicleBox.stopAudio();
+  }
 });
