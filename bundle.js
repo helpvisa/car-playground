@@ -64069,9 +64069,13 @@ module.exports = { torqueCurve, pacejkaCurve };
 },{}],4:[function(require,module,exports){
 // import our library dependencies
 const THREE = require('three');
+// const { GLTFLoader } = require('three/examples/jsm/loaders/GLTFLoader.js');
 const CANNON = require('cannon-es');
 // const CannonDebugger = require('cannon-es-debugger');
 const { torqueCurve, pacejkaCurve } = require('./classes/curve.js');
+
+// initalize our model loader
+// const loader = new THREE.GLTFLoader();
 
 // initialize cannon-es
 const physicsWorld = new CANNON.World({
@@ -64140,13 +64144,34 @@ class VehicleBody {
     this.appliedTorque = 0;
     this.numPoweredWheels = 0;
 
-    // graphical bools
-    this.appliedSteerAngle = false;
+    // setup engine audio / oscillator
+    this.idleSound = new THREE.PositionalAudio(listener); // assign to our camera's listener
+    const oscillatorIdle = listener.context.createOscillator();
+    const periodicIdle = listener.context.createPeriodicWave([1, 1, 0, 1, 1], [0, 1, -1, -1, 0]);
+    //oscillatorIdle.setPeriodicWave(periodicIdle);
+    oscillatorIdle.type = 'sine';
+    oscillatorIdle.frequency.setValueAtTime(this.currentRPM / 48, listener.context.currentTime);
+    this.idleSound.setNodeSource(oscillatorIdle);
+    this.idleSound.setRefDistance(20);
+    this.idleSound.setVolume(0.5);
+    this.parent.add(this.idleSound);
+    // accelerator
+    this.acceleratorSound = new THREE.PositionalAudio(listener);
+    const oscillatorAccel = listener.context.createOscillator();
+    const periodicAccel = listener.context.createPeriodicWave([-1, -1, 0, 1, -1], [0, 0, 1, 0.5, 0.5]);
+    //oscillatorAccel.setPeriodicWave(periodicAccel);
+    oscillatorAccel.type = 'triangle';
+    oscillatorAccel.frequency.setValueAtTime(this.currentRPM / 24, listener.context.currentTime);
+    this.acceleratorSound.setNodeSource(oscillatorAccel);
+    this.acceleratorSound.setRefDistance(20);
+    this.acceleratorSound.setVolume(0.2);
+    this.parent.add(this.acceleratorSound);
+
 
     // setup debug line materials
     this.drawDebug = false;
     this.springMat = new THREE.LineBasicMaterial({ color: 0x00FF00 });
-    this.springMat.depthTest = false;
+    this.springMat.depthTest = false; 
     this.accelMat = new THREE.LineBasicMaterial({ color: 0x0000FF });
     this.accelMat.depthTest = false;
     this.slipMat = new THREE.LineBasicMaterial({ color: 0xFF0000 });
@@ -64301,9 +64326,9 @@ class VehicleBody {
   updateEngine(delta) {
     // get input to drive engine
     if (input.accel) {
-      this.throttle += 1 * delta;
+      this.throttle += 2 * delta;
     } else {
-      this.throttle -= 2 * delta;
+      this.throttle -= 4 * delta;
     }
     this.throttle = Math.max(0, Math.min(1, this.throttle));
     // get brakes
@@ -64347,6 +64372,10 @@ class VehicleBody {
 
     // clamp RPM values
     this.currentRPM = Math.max(this.minRPM, Math.min(this.maxRPM, this.currentRPM));
+    this.idleSound.source.frequency.linearRampToValueAtTime(this.currentRPM / 48, listener.context.currentTime + 0.1);
+    this.acceleratorSound.source.frequency.linearRampToValueAtTime(this.currentRPM / 24, listener.context.currentTime + 0.1);
+    this.idleSound.setVolume(Math.max(0.5, (1 - this.throttle) * 0.6));
+    this.acceleratorSound.setVolume(Math.max(0.4, this.throttle * 0.5));
 
     // look up torque curve
     this.appliedTorque = torqueCurve.getValueAtPos((this.currentRPM) / this.maxRPM) * this.throttle;
@@ -64463,14 +64492,14 @@ class VehicleBody {
           // calculate slip ratio based on torque applied by engine / braking
           slipRatio = ((this.wheels[i].angularVelocity + ((engineAccel + brakingAccel) / wheelInertia * delta)) * this.wheels[i].wheelRadius - this.wheels[i].previousForwardVelocity.length())
           / ((this.wheels[i].angularVelocity + ((engineAccel) / wheelInertia * delta)) * this.wheels[i].wheelRadius);
-          slipRatio = Math.max(-2, Math.min(2, slipRatio));
+          slipRatio = Math.max(-1, Math.min(1, slipRatio));
         } else if (this.brake > 0) {
           slipRatio = -1;
         } else {
           slipRatio = 1;
         }
       }
-      let grip = pacejkaCurve.getValueAtPos(slipRatio / 2); // check slip curve
+      let grip = pacejkaCurve.getValueAtPos(slipRatio); // check slip curve
       this.wheels[i].grip = grip;
 
       // calculate wheel acceleration
@@ -64480,6 +64509,7 @@ class VehicleBody {
         this.wheels[i].angularAcceleration = (engineAccel + brakingAccel + rollingResistance) / wheelInertia;
       }
       this.wheels[i].angularVelocity += this.wheels[i].angularAcceleration * delta;
+      // derive this from new angularAccel - old angularAccel? would allow for stuff like downshifts to slow the car + engine braking
       this.wheels[i].appliedAcceleration = (Math.max(-this.wheels[i].maxDriveForce, Math.min((engineAccel + brakingAccel) * grip, this.wheels[i].maxDriveForce)) + rollingResistance) / this.wheels[i].wheelRadius;
 
       // rotate the wheel mesh
@@ -64644,10 +64674,10 @@ class VehicleBody {
       let acceleration = appliedAcceleration;
       let accelForce = new CANNON.Vec3();
       // if brakes are being applied, don't apply braking relative to steering direction anymore
-      if (this.brake) {
-        forwardDir = new THREE.Vector3(0, 0, 1);
-        forwardDir.applyQuaternion(transform.quaternion);
-      }
+      // if (this.brake) {
+      //   forwardDir = new THREE.Vector3(0, 0, 1);
+      //   forwardDir.applyQuaternion(transform.quaternion);
+      // }
       accelForce.set(
         (forwardDir.x * acceleration),
         (forwardDir.y * acceleration),
@@ -64968,11 +64998,13 @@ const t = new THREE.Clock();
 // create a scene
 const scene = new THREE.Scene(); 
 
-// setup camera
+// setup camera and audio listener
 let viewRatio = window.innerWidth / window.innerHeight;
 const camera = new THREE.OrthographicCamera(viewRatio * 20 / -2, viewRatio * 20 / 2, 20 / 2, 20 / -2, -1000, 1000);
-camera.position.set(10, 10, 0);
+camera.position.set(10, 10, 10);
 camera.lookAt(0, 0, 0);
+const listener = new THREE.AudioListener();
+camera.add(listener);
 
 // setup lights
 const sun = new THREE.DirectionalLight(0xFFFFFF);
@@ -65008,27 +65040,35 @@ rbGround.createBox(0, new THREE.Vector3(plane.position.x, plane.position.y, plan
 physicsWorld.addBody(rbGround.body);
 
 // create our testing vehicle
-let centerOfGravity = new THREE.Vector3(0, 0.7, 0);
+let centerOfGravity = new THREE.Vector3(0, 0.4, 0);
 const vehicleGroup = new THREE.Group();
 const box = new THREE.Mesh(
-  new THREE.BoxGeometry(1.8, 1.6, 4),
+  new THREE.BoxGeometry(1.65, 1.23, 4.1),
   new THREE.MeshStandardMaterial({
     color: 0x408080
   }));
 box.position.copy(centerOfGravity); // acount for offset
 box.castShadow = true;
 box.receiveShadow = true;
+// load our car model
+// loader.load('../models/vehicles/tinycar_01.glb', (gltf) => {
+//   gltf.position.copy(centerOfGravity);
+//   gltf.castShadow = true;
+//   gltf.receiveShadow = true;
+//   vehicleGroup.add(gltf);
+// }, undefined, (error) => { console.error(error) });
+// add box or model to vehicle parent
 vehicleGroup.add(box);
 vehicleGroup.position.set(0, 5, 0);
 // setup rigidbody for this box
 const vehicleBox = new VehicleBody(vehicleGroup);
-vehicleBox.createBox(1600, vehicleGroup.position, vehicleGroup.quaternion, new THREE.Vector3(1.8, 1.6, 4), centerOfGravity);
+vehicleBox.createBox(1400, vehicleGroup.position, vehicleGroup.quaternion, new THREE.Vector3(1.65, 1.23, 4.1), centerOfGravity);
 // create wheels by using an array of relative wheel positions
 vehicleBox.createWheels([
-  { pos: new THREE.Vector3(vehicleBox.size.x / 2, -vehicleBox.size.y / 1.5, vehicleBox.size.z / 3), suspensionStrength: 18000, suspensionDamping: 800, wheelRadius: 0.33, powered: false, steering: true, brakes: true },
-  { pos: new THREE.Vector3(-vehicleBox.size.x / 2, -vehicleBox.size.y / 1.5, vehicleBox.size.z / 3), suspensionStrength: 18000, suspensionDamping: 800, wheelRadius: 0.33, powered: false, steering: true, brakes: true },
-  { pos: new THREE.Vector3(vehicleBox.size.x / 2, -vehicleBox.size.y / 1.5, -vehicleBox.size.z / 3), suspensionStrength: 18000, suspensionDamping: 800, wheelRadius: 0.33, powered: true, steering: false, brakes: true },
-  { pos: new THREE.Vector3(-vehicleBox.size.x / 2, -vehicleBox.size.y / 1.5, -vehicleBox.size.z / 3), suspensionStrength: 18000, suspensionDamping: 800, wheelRadius: 0.33, powered: true, steering: false, brakes: true }
+  { pos: new THREE.Vector3(vehicleBox.size.x / 2, -vehicleBox.size.y / 1.5, vehicleBox.size.z / 3), suspensionStrength: 12000, suspensionDamping: 800, wheelRadius: 0.33, powered: true, steering: true, brakes: true },
+  { pos: new THREE.Vector3(-vehicleBox.size.x / 2, -vehicleBox.size.y / 1.5, vehicleBox.size.z / 3), suspensionStrength: 12000, suspensionDamping: 800, wheelRadius: 0.33, powered: true, steering: true, brakes: true },
+  { pos: new THREE.Vector3(vehicleBox.size.x / 2, -vehicleBox.size.y / 1.5, -vehicleBox.size.z / 3), suspensionStrength: 12000, suspensionDamping: 800, wheelRadius: 0.33, powered: false, steering: false, brakes: true },
+  { pos: new THREE.Vector3(-vehicleBox.size.x / 2, -vehicleBox.size.y / 1.5, -vehicleBox.size.z / 3), suspensionStrength: 12000, suspensionDamping: 800, wheelRadius: 0.33, powered: false, steering: false, brakes: true }
 ]);
 physicsWorld.addBody(vehicleBox.body);
 
@@ -65066,7 +65106,7 @@ function step(delta) {
   }
 
   // update camera to follow vehicle
-  camera.position.set(vehicleGroup.position.x + 10, vehicleGroup.position.y + 10, vehicleGroup.position.z);
+  camera.position.set(vehicleGroup.position.x + 10, vehicleGroup.position.y + 10, vehicleGroup.position.z + 10);
   // camera.position.set(vehicleGroup.position.x, vehicleGroup.position.y + 0.6, vehicleGroup.position.z);
   // camera.rotation.set(-vehicleGroup.rotation.x, vehicleGroup.rotation.y, -vehicleGroup.rotation.z);
   // camera.rotateOnWorldAxis(new THREE.Vector3(0, 1, 0), Math.PI);
@@ -65086,6 +65126,12 @@ function renderFrame() {
 
 // call our renderFrame function
 renderFrame();
+
+// listen for a user event to trigger audio
+document.addEventListener('click', () => {
+  vehicleBox.idleSound.source.start(listener.context.currentTime);
+  vehicleBox.acceleratorSound.source.start(listener.context.currentTime);
+});
 },{"./classes/curve.js":3,"cannon-es":1,"three":2}],5:[function(require,module,exports){
 
 },{}]},{},[4]);

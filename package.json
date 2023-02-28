@@ -6,5 +6,8 @@
   },
   "scripts": {
     "build": "browserify ./src/js/index.js -o ./bundle.js"
+  },
+  "devDependencies": {
+    "esmify": "^2.1.1"
   }
 }
