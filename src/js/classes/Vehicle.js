@@ -512,6 +512,7 @@ class VehicleBody {
         let localTarget = new THREE.Vector3();
         localTarget = this.wheels[i].target.clone();
         localTarget.sub(transform.position);
+        localTarget.add(this.wheels[i].previousForwardVelocity.clone().multiplyScalar(delta)); // ensure the target keeps up w the vehicle's update
 
         // convert his local position into something the physics engine can understand
         let btWheelPos = new CANNON.Vec3();
@@ -661,6 +662,7 @@ class VehicleBody {
       let localTarget = new THREE.Vector3();
       localTarget = this.wheels[i].target.clone();
       localTarget.sub(transform.position);
+      localTarget.add(forwardVelocity.clone().multiplyScalar(delta)); // ensure the force is applied at the right spot while vehicle is moving
 
       // convert it into something the physics engine can understand
       let btWheelPos = new CANNON.Vec3();

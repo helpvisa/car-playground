@@ -118,10 +118,10 @@ const vehicle = new VehicleBody(vehicleGroup, input, [plane], scene);
 vehicle.createBox(1400, vehicleGroup.position, vehicleGroup.quaternion, new THREE.Vector3(1.65, 1.23, 4.1), centerOfGravity);
 // create wheels by using an array of relative wheel positions
 vehicle.createWheels([
-  { pos: new THREE.Vector3(vehicle.size.x / 2, -vehicle.size.y / 1.65, vehicle.size.z / 3), suspensionStrength: 26000, suspensionDamping: 1600, wheelRadius: 0.35, powered: true, steering: true, brakes: true },
-  { pos: new THREE.Vector3(-vehicle.size.x / 2, -vehicle.size.y / 1.65, vehicle.size.z / 3), suspensionStrength: 26000, suspensionDamping: 1600, wheelRadius: 0.35, powered: true, steering: true, brakes: true },
-  { pos: new THREE.Vector3(vehicle.size.x / 2, -vehicle.size.y / 1.65, -vehicle.size.z / 3), suspensionStrength: 26000, suspensionDamping: 1600, wheelRadius: 0.35, powered: false, steering: false, brakes: true },
-  { pos: new THREE.Vector3(-vehicle.size.x / 2, -vehicle.size.y / 1.65, -vehicle.size.z / 3), suspensionStrength: 26000, suspensionDamping: 1600, wheelRadius: 0.35, powered: false, steering: false, brakes: true }
+  { pos: new THREE.Vector3(vehicle.size.x / 2, -vehicle.size.y / 1.3, vehicle.size.z / 3), suspensionStrength: 18000, suspensionDamping: 900, wheelRadius: 0.35, powered: true, steering: true, brakes: true },
+  { pos: new THREE.Vector3(-vehicle.size.x / 2, -vehicle.size.y / 1.3, vehicle.size.z / 3), suspensionStrength: 18000, suspensionDamping: 900, wheelRadius: 0.35, powered: true, steering: true, brakes: true },
+  { pos: new THREE.Vector3(vehicle.size.x / 2, -vehicle.size.y / 1.3, -vehicle.size.z / 3), suspensionStrength: 18000, suspensionDamping: 900, wheelRadius: 0.35, powered: false, steering: false, brakes: true },
+  { pos: new THREE.Vector3(-vehicle.size.x / 2, -vehicle.size.y / 1.3, -vehicle.size.z / 3), suspensionStrength: 18000, suspensionDamping: 900, wheelRadius: 0.35, powered: false, steering: false, brakes: true }
 ]);
 physicsWorld.addBody(vehicle.body);
 
@@ -157,7 +157,7 @@ function step(delta) {
 let shouldStep = true;
 function renderFrame() {
   let delta = t.getDelta();
-  if (delta > 0.25) {
+  if (delta > 0.05) {
     delta = 0;
     console.log('framerate too low; resetting delta time');
   }
