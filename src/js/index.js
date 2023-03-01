@@ -91,7 +91,7 @@ physicsWorld.addBody(rbGround.body);
 scene.add(plane);
 
 // create our testing vehicle
-let centerOfGravity = new THREE.Vector3(0, 0.4, 0);
+let centerOfGravity = new THREE.Vector3(0, 0.44, 0);
 const vehicleGroup = new THREE.Group();
 const box = new THREE.Mesh(
   new THREE.BoxGeometry(1.65, 1.23, 4.1),
@@ -104,7 +104,7 @@ box.receiveShadow = true;
 // add box or model to vehicle parent
 vehicleGroup.add(box);
 scene.add(vehicleGroup);
-vehicleGroup.position.set(0, 5, 0);
+vehicleGroup.position.set(0, 2, 0);
 // setup rigidbody for this box, with an input object to pass in user inputs
 const input = {
   accel: false,
@@ -118,10 +118,10 @@ const vehicle = new VehicleBody(vehicleGroup, input, [plane], scene);
 vehicle.createBox(1400, vehicleGroup.position, vehicleGroup.quaternion, new THREE.Vector3(1.65, 1.23, 4.1), centerOfGravity);
 // create wheels by using an array of relative wheel positions
 vehicle.createWheels([
-  { pos: new THREE.Vector3(vehicle.size.x / 2, -vehicle.size.y / 1.5, vehicle.size.z / 3), suspensionStrength: 18000, suspensionDamping: 800, wheelRadius: 0.33, powered: true, steering: true, brakes: true },
-  { pos: new THREE.Vector3(-vehicle.size.x / 2, -vehicle.size.y / 1.5, vehicle.size.z / 3), suspensionStrength: 18000, suspensionDamping: 800, wheelRadius: 0.33, powered: true, steering: true, brakes: true },
-  { pos: new THREE.Vector3(vehicle.size.x / 2, -vehicle.size.y / 1.5, -vehicle.size.z / 3), suspensionStrength: 18000, suspensionDamping: 800, wheelRadius: 0.33, powered: false, steering: false, brakes: true },
-  { pos: new THREE.Vector3(-vehicle.size.x / 2, -vehicle.size.y / 1.5, -vehicle.size.z / 3), suspensionStrength: 18000, suspensionDamping: 800, wheelRadius: 0.33, powered: false, steering: false, brakes: true }
+  { pos: new THREE.Vector3(vehicle.size.x / 2, -vehicle.size.y / 1.65, vehicle.size.z / 3), suspensionStrength: 26000, suspensionDamping: 1600, wheelRadius: 0.35, powered: true, steering: true, brakes: true },
+  { pos: new THREE.Vector3(-vehicle.size.x / 2, -vehicle.size.y / 1.65, vehicle.size.z / 3), suspensionStrength: 26000, suspensionDamping: 1600, wheelRadius: 0.35, powered: true, steering: true, brakes: true },
+  { pos: new THREE.Vector3(vehicle.size.x / 2, -vehicle.size.y / 1.65, -vehicle.size.z / 3), suspensionStrength: 26000, suspensionDamping: 1600, wheelRadius: 0.35, powered: false, steering: false, brakes: true },
+  { pos: new THREE.Vector3(-vehicle.size.x / 2, -vehicle.size.y / 1.65, -vehicle.size.z / 3), suspensionStrength: 26000, suspensionDamping: 1600, wheelRadius: 0.35, powered: false, steering: false, brakes: true }
 ]);
 physicsWorld.addBody(vehicle.body);
 
@@ -133,11 +133,12 @@ const rigidBodies = [{ mesh: vehicleGroup, rigidBody: vehicle }];
 
 // setup step function (update function)
 function step(delta) {
+  // step our physics simulation
+  physicsWorld.fixedStep(1 / 120, 10);
+  // cannonDebugger.update();
+
   // update our vehicle
   vehicle.updateVehicle(delta);
-
-  physicsWorld.fixedStep(1 / 120);
-  // cannonDebugger.update();
 
   // make meshes match physics world
   for (let i = 0; i < rigidBodies.length; i++) {
@@ -153,12 +154,20 @@ function step(delta) {
 }
 
 // render function
+let shouldStep = true;
 function renderFrame() {
-  requestAnimationFrame(() => {
-    step(t.getDelta()); // call our update function
-    threejs.render(scene, camera);
-    renderFrame();
-  });
+  let delta = t.getDelta();
+  if (delta > 0.25) {
+    delta = 0;
+    console.log('framerate too low; resetting delta time');
+  }
+
+  if (shouldStep) {
+    step(delta); // call our update function
+  }
+  threejs.render(scene, camera);
+
+  requestAnimationFrame(renderFrame);
 }
 
 // create a div to hold the canvas
@@ -362,8 +371,10 @@ document.addEventListener('click', async () => {
 // mute audio when window not in focus
 document.addEventListener('visibilitychange', () => {
   if (document.visibilityState === 'visible') {
+    shouldStep = true;
     vehicle.startAudio();
   } else {
+    shouldStep = false;
     vehicle.stopAudio();
   }
 });

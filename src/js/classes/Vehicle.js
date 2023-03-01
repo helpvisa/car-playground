@@ -37,7 +37,7 @@ class VehicleBody {
     this.currentSpeed = 0;
     this.throttle = 0;
     this.brake = 0;
-    this.brakingPower = 8000;
+    this.brakingPower = 4000;
     this.appliedTorque = 0;
     this.numPoweredWheels = 0;
 
@@ -76,16 +76,33 @@ class VehicleBody {
 
   // create our tone audio sources
   createAudio() {
+    // setup effects and filters
+    this.engineFilter = new TONE.Filter();
+    this.engineFilter.set({
+      type: 'lowpass',
+      frequency: 270,
+      rolloff: -48,
+      Q: 4
+    });
+    this.engineDistortion = new TONE.Distortion();
+    this.engineDistortion.set({
+      distortion: 0.2,
+      oversample: 'none'
+    });
     // setup engine audio / oscillator
-    this.idleSound = new TONE.Oscillator(this.currentRPM / 40, 'sawtooth16').toDestination();
-    this.idleSound.set({ volume: -12 });
-    // accelerator
-    this.acceleratorSound = new TONE.Oscillator(this.currentRPM / 30, 'sawtooth22').toDestination();
-    this.acceleratorSound.set({ volume: -12 });
+    this.engineSound = new TONE.FMSynth();
+    this.engineSound.set({
+      volume: -6,
+      harmonicity: 0.5,
+      modulationIndex: 0.8,
+      oscillator: {
+        type: 'sawtooth12'
+      }
+    });
 
     // start the tones
-    this.idleSound.start();
-    this.acceleratorSound.start();
+    this.engineSound.chain(this.engineFilter, this.engineDistortion, TONE.Destination);
+    this.engineSound.triggerAttack();
 
     // now go through each wheel and add an audio source for wheel slip
     for (let i = 0; i < this.wheels.length; i++) {
@@ -101,9 +118,8 @@ class VehicleBody {
 
   // mute or re-enable audio
   startAudio() {
-    if (this.idleSound && this.acceleratorSound && !this.isPlayingAudio) {
-      this.idleSound.start();
-      this.acceleratorSound.start();
+    if (this.engineSound && !this.isPlayingAudio) {
+      this.engineSound.triggerAttack();
 
       // loop through wheels
       for (let i = 0; i < this.wheels.length; i++) {
@@ -115,9 +131,8 @@ class VehicleBody {
     }
   }
   stopAudio() {
-    if (this.idleSound && this.acceleratorSound && this.isPlayingAudio) {
-      this.idleSound.stop();
-      this.acceleratorSound.stop();
+    if (this.engineSound && this.isPlayingAudio) {
+      this.engineSound.triggerRelease();
 
       // loop through wheels
       for (let i = 0; i < this.wheels.length; i++) {
@@ -305,11 +320,22 @@ class VehicleBody {
     this.currentRPM = Math.max(this.minRPM, Math.min(this.maxRPM, this.currentRPM));
 
     // update audio ramps
-    if (this.idleSound && this.acceleratorSound) {
-      this.idleSound.set({ frequency: this.currentRPM / 40 });
-      this.acceleratorSound.set({ frequency: this.currentRPM / 30 });
-      this.idleSound.set({ volume: -12 - (this.throttle * 2) });
-      this.acceleratorSound.set({ volume: -14 + this.throttle * 5 });
+    if (this.engineSound) {
+      // main oscillator
+      this.engineSound.set({
+        frequency: this.currentRPM / 25 + (Math.random() * 6 - 3),
+        harmonicity: 0.5 + Math.random() * 0.01 - 0.005,
+        modulationIndex: 0.8 + Math.random() * 0.2 - 0.1
+      });
+      // lowpass
+      this.engineFilter.set({
+        frequency: 270 + this.throttle * 10,
+        Q: 4 + this.throttle * 2
+      });
+      // distortion
+      this.engineDistortion.set({
+        distortion: 0.2 + this.throttle * 0.2
+      });
     }
 
     // look up torque curve
@@ -473,7 +499,7 @@ class VehicleBody {
   }
 
   // spring force calculator for a wheel
-  calcSuspension() {
+  calcSuspension(delta) {
     // get transform
     let transform = this.getTransform();
 
@@ -481,7 +507,7 @@ class VehicleBody {
     for (let i = 0; i < this.wheels.length; i++) {
       if (this.wheels[i].isGrounded) {
         // cumulative force
-        let totalAppliedForce = new CANNON.Vec3();
+        let totalAppliedForce = new THREE.Vector3();
         // get local position for target
         let localTarget = new THREE.Vector3();
         localTarget = this.wheels[i].target.clone();
@@ -512,7 +538,7 @@ class VehicleBody {
         this.wheels[i].suspensionForceAtWheel = cumulativeForce.length();
         // apply total force to wheel
         totalAppliedForce.set(cumulativeForce.x, cumulativeForce.y, cumulativeForce.z);
-        this.body.applyForce(totalAppliedForce, btWheelPos);
+        this.body.applyImpulse(totalAppliedForce.multiplyScalar(delta), btWheelPos);
 
         // setup drawing of debug lines
         if (this.drawDebug) {
@@ -620,7 +646,7 @@ class VehicleBody {
 
       // apply acceleration and slip force based on traction circle and determine current wheel grip
       let acceleration = appliedAcceleration;
-      let accelForce = new CANNON.Vec3();
+      let accelForce = new THREE.Vector3();
       accelForce.set(
         (forwardDir.x * acceleration),
         (forwardDir.y * acceleration),
@@ -628,7 +654,7 @@ class VehicleBody {
       );
       slipVelocity.projectOnVector(slipDir);
       slipVelocity.multiplyScalar(appliedSlipForce);
-      let slipForce = new CANNON.Vec3();
+      let slipForce = new THREE.Vector3();
       slipForce.set(-slipVelocity.x, 0, -slipVelocity.z);
 
       // get local location of wheel target
@@ -641,8 +667,8 @@ class VehicleBody {
       btWheelPos.set(localTarget.x, localTarget.y, localTarget.z);
 
       if (this.wheels[i].isGrounded) {
-        this.body.applyForce(slipForce, btWheelPos); // we apply impulse for an immediate velocity change
-        this.body.applyForce(accelForce, btWheelPos);
+        this.body.applyImpulse(slipForce.multiplyScalar(delta), btWheelPos); // we apply impulse for an immediate velocity change
+        this.body.applyImpulse(accelForce.multiplyScalar(delta), btWheelPos);
       }
 
       // play tirescreech based on slip angle
@@ -661,7 +687,7 @@ class VehicleBody {
         let accelForcePoint = pos.clone();
         if (this.wheels[i].powered && this.wheels[i].isGrounded) {
           accelForcePoint.set(accelForce.x, accelForce.y, accelForce.z);
-          accelForcePoint.multiplyScalar(1 / this.mass).add(pos);
+          accelForcePoint.multiplyScalar(100 / this.mass).add(pos);
         }
 
         // render accel / decel / braking
@@ -671,7 +697,7 @@ class VehicleBody {
         let slipPos = new THREE.Vector3();
         slipPos = pos.clone();
         if (this.wheels[i].isGrounded) {
-          slipPos.add(new THREE.Vector3(slipForce.x, slipForce.y, slipForce.z).multiplyScalar(1 / this.mass));
+          slipPos.add(new THREE.Vector3(slipForce.x, slipForce.y, slipForce.z).multiplyScalar(100 / this.mass));
         }
         this.wheels[i].slipPoints = [pos, slipPos];
         this.wheels[i].slipGeometry.setFromPoints(this.wheels[i].slipPoints);
@@ -683,24 +709,24 @@ class VehicleBody {
   }
 
   // apply aerodynamic and surface drag
-  applyDrag() {
+  applyDrag(delta) {
     // calculate aerodynamic drag applied to entire car body
     let aeroDrag = this.body.velocity;
     aeroDrag = new THREE.Vector3(aeroDrag.x, aeroDrag.y, aeroDrag.z); // convert to three.js vector
     aeroDrag.multiplyScalar(-aeroDrag.length() * 0.01);
-    let dragForce = new CANNON.Vec3();
+    let dragForce = new THREE.Vector3();
     dragForce.set(aeroDrag.x, aeroDrag.y, aeroDrag.z);
-    // this.body.applyForce(dragForce);
+    this.body.applyImpulse(dragForce.multiplyScalar(delta));
   }
 
   // update entire vehicle with above functions
   updateVehicle(delta) {
     this.updateEngine(delta);
     this.updateWheels(delta);
-    this.calcSuspension();
+    this.calcSuspension(delta);
     this.calcWeightTransfer();
     this.calcSteering(delta);
-    this.applyDrag();
+    this.applyDrag(delta);
   }
 }
 
