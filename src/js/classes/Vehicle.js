@@ -106,26 +106,42 @@ class VehicleBody {
 
     // now go through each wheel and add an audio source for wheel slip
     for (let i = 0; i < this.wheels.length; i++) {
-      this.wheels[i].longSlipSound = new TONE.FMSynth().toDestination();
+      // create our filter and distortion
+      this.wheels[i].slipFilter = new TONE.Filter();
+      this.wheels[i].slipFilter.set({
+        type: 'lowpass',
+        frequency: 300,
+        rolloff: -96,
+        Q: 12
+      });
+      this.wheels[i].slipDistortion = new TONE.Distortion();
+      this.wheels[i].slipDistortion.set({
+        distortion: 0.8,
+        oversample: '4x'
+      });
+      // create our slippage sounds
+      this.wheels[i].longSlipSound = new TONE.FMSynth();
       this.wheels[i].longSlipSound.set({
         volume: -100,
-        harmonicity: 0.6,
-        modulationIndex: 2,
+        harmonicity: 0.1,
+        modulationIndex: 1,
         oscillator: {
-          type: 'sawtooth8'
+          type: 'sine'
         }
       });
+      this.wheels[i].longSlipSound.chain(this.wheels[i].slipFilter, this.wheels[i].slipDistortion, TONE.Destination);
       this.wheels[i].longSlipSound.triggerAttack();
 
-      this.wheels[i].latSlipSound = new TONE.FMSynth().toDestination();
+      this.wheels[i].latSlipSound = new TONE.FMSynth();
       this.wheels[i].latSlipSound.set({
         volume: -100,
-        harmonicity: 0.6,
-        modulationIndex: 2,
+        harmonicity: 0.1,
+        modulationIndex: 1,
         oscillator: {
-          type: 'sawtooth8'
+          type: 'sine'
         }
       });
+      this.wheels[i].latSlipSound.chain(this.wheels[i].slipFilter, this.wheels[i].slipDistortion, TONE.Destination);
       this.wheels[i].latSlipSound.triggerAttack();
     }
   }
@@ -499,7 +515,7 @@ class VehicleBody {
       if (this.wheels[i].longSlipSound) {
         if (Math.abs(slipRatio) > 0.1 && this.wheels[i].isGrounded && this.wheels[i].previousForwardVelocity.length() > 0.2) {
           this.wheels[i].longSlipSound.set({
-            volume: -100 + Math.abs(50 * slipRatio),
+            volume: -100 + Math.abs(32 * slipRatio),
             frequency: Math.max(1200, Math.min(2000, 200 * this.wheels[i].previousForwardVelocity.length())),
           });
         } else {
@@ -697,7 +713,7 @@ class VehicleBody {
       if (this.wheels[i].latSlipSound) {
         if (Math.abs(slipAngle) > 5 && this.wheels[i].isGrounded && this.wheels[i].previousForwardVelocity.length() > 0.2) {
           this.wheels[i].latSlipSound.set({
-            volume: -100 + Math.max(42, Math.abs(slipAngle)),
+            volume: -100 + Math.abs(slipAngle),
             frequency: Math.max(1200, Math.min(1600, appliedSlipForce / 4)),
           });
         } else {

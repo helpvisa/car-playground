@@ -2,7 +2,7 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import * as CANNON from 'cannon-es';
-import CannonDebugger from 'cannon-es-debugger';
+// import CannonDebugger from 'cannon-es-debugger';
 import * as TONE from 'tone';
 
 // import our custom classes / objects
@@ -25,8 +25,8 @@ const loader = new GLTFLoader();
 const physicsWorld = new CANNON.World({
   gravity: new CANNON.Vec3(0, -9.8, 0),
   defaultContactMaterial: {
-    friction: 0.9,
-    restitution: 0
+    friction: 0.5,
+    restitution: 0.2
   }
 });
 
@@ -182,13 +182,13 @@ physicsWorld.addBody(vehicle.body);
 const rigidBodies = [{ mesh: vehicleGroup, rigidBody: vehicle }];
 
 // setup cannon debugger
-const cannonDebugger = new CannonDebugger(scene, physicsWorld);
+// const cannonDebugger = new CannonDebugger(scene, physicsWorld);
 
 // setup step function (update function)
 function step(delta) {
   // step our physics simulation
   physicsWorld.fixedStep(1 / 120, 10);
-  cannonDebugger.update();
+  // cannonDebugger.update();
 
   // update our vehicle
   vehicle.updateVehicle(delta);
