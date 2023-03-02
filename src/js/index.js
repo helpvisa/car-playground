@@ -2,7 +2,7 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import * as CANNON from 'cannon-es';
-// const CannonDebugger = require('cannon-es-debugger');
+import CannonDebugger from 'cannon-es-debugger';
 import * as TONE from 'tone';
 
 // import our custom classes / objects
@@ -15,7 +15,7 @@ import { VehicleBody } from './classes/Vehicle.js';
 const checker = new THREE.TextureLoader().load("./src/textures/wheel_test_tex.jpg");
 checker.wrapS = THREE.RepeatWrapping;
 checker.wrapT = THREE.RepeatWrapping;
-checker.repeat.set(1000, 1000);
+checker.repeat.set(100, 100);
 
 /*************************************************************************/
 // initalize our model loader
@@ -24,10 +24,14 @@ const loader = new GLTFLoader();
 // initialize cannon-es
 const physicsWorld = new CANNON.World({
   gravity: new CANNON.Vec3(0, -9.8, 0),
+  defaultContactMaterial: {
+    friction: 0.9,
+    restitution: 0
+  }
 });
 
 // construct our world scene and setup three.js
-const threejs = new THREE.WebGLRenderer();
+const threejs = new THREE.WebGLRenderer({ antialias: true });
 threejs.shadowMap.enabled = true;
 threejs.shadowMap.type = THREE.PCFSoftShadowMap;
 threejs.setPixelRatio(window.devicePixelRatio);
@@ -61,11 +65,11 @@ sun.position.set(0, 10, 0);
 sun.target.position.set(0, 0, 0);
 sun.castShadow = true;
 sun.shadow.bias = 0;
-sun.shadow.mapSize.width = 256;
-sun.shadow.mapSize.height = 256;
+sun.shadow.mapSize.width = 1024;
+sun.shadow.mapSize.height = 1024;
 sun.shadow.camera.near = 1.0;
 sun.shadow.camera.far = 200;
-let shadowCamera = 10;
+let shadowCamera = 20;
 sun.shadow.camera.left = -shadowCamera;
 sun.shadow.camera.right = shadowCamera;
 sun.shadow.camera.top = shadowCamera;
@@ -74,24 +78,73 @@ const ambient = new THREE.AmbientLight(0x606060);
 // add the lights to our scene
 scene.add(sun, sun.target, ambient);
 
-// setup basic test meshes
-const plane = new THREE.Mesh(
-  new THREE.PlaneGeometry(10000, 10000, 1, 1),
-  new THREE.MeshStandardMaterial({
-    color: 0xFFFFFF,
-    map: checker,
-  }));
-plane.castShadow = false;
-plane.receiveShadow = true;
-plane.rotation.x = -Math.PI / 2;
-// setup ground rigidbody
-const rbGround = new RigidBody();
-rbGround.createBox(0, new THREE.Vector3(plane.position.x, plane.position.y, plane.position.z), plane.quaternion, new THREE.Vector3(10000, 10000, 0.01));
-physicsWorld.addBody(rbGround.body);
-scene.add(plane);
+// load our playground model
+const playground = [];
+loader.load('./src/models/environment/car-playground.glb', (gltf) => {
+  gltf.scene.traverse((child) => {
+    // enable shadowcasting
+    child.castShadow = true;
+    child.receiveShadow = true;
+
+    // create collisions
+    if (child.geometry) {
+      if (child.name.includes("Cube")) { // create box colliders for materials that can use them
+        // get attributes from child
+        const size = child.scale;
+        const pos = child.position;
+        const rot = child.quaternion;
+        // create our cannon shape
+        const cannonSize = new CANNON.Vec3(size.x, size.y, size.z);
+        const shape = new CANNON.Box(cannonSize);
+        const body = new CANNON.Body({ mass: 0, shape: shape });
+        // transform the body
+        body.position.set(pos.x, pos.y, pos.z);
+        body.quaternion.set(rot.x, rot.y, rot.z, rot.w);
+        // add it to our world
+        physicsWorld.addBody(body);
+      } else {
+        const geometry = child.geometry.clone();
+        geometry.scale(child.scale.x, child.scale.y, child.scale.z);
+        geometry.rotateX(child.rotation.x);
+        geometry.rotateY(child.rotation.y);
+        geometry.rotateZ(child.rotation.z);
+        geometry.translate(child.position.x, child.position.y, child.position.z);
+        const vertIndex = geometry.attributes.position.array;
+        const faceIndex = geometry.index.array;
+        // build an array of our vertices
+        const vertices = [];
+        for (let i = 0; i < vertIndex.length; i += 3) {
+          let vertex = new CANNON.Vec3(vertIndex[i], vertIndex[i+1], vertIndex[i+2]);
+          vertices.push(vertex);
+        }
+        // build an array of our faces
+        const faces = [];
+        for (let i = 0; i < faceIndex.length; i += 3) {
+          let face = [faceIndex[i], faceIndex[i+1], faceIndex[i+2]];
+          faces.push(face);
+        }
+        // build our shape and add it to the physics world
+        const convexShape = new CANNON.ConvexPolyhedron({ vertices: vertices, faces: faces});
+        const convexBody = new CANNON.Body({ mass: 0, shape: convexShape });
+        physicsWorld.addBody(convexBody);
+      }
+    }
+
+    // update material
+    if (child.material) {
+      const mat = new THREE.MeshStandardMaterial({
+        map: checker,
+      });
+      child.material = mat;
+    }
+    playground.push(child);
+  });
+
+  scene.add(gltf.scene);
+}, undefined, (err) => { console.log(err) });
 
 // create our testing vehicle
-let centerOfGravity = new THREE.Vector3(0, 0.44, 0);
+let centerOfGravity = new THREE.Vector3(0, 0.55, 0);
 const vehicleGroup = new THREE.Group();
 const box = new THREE.Mesh(
   new THREE.BoxGeometry(1.65, 1.23, 4.1),
@@ -104,7 +157,7 @@ box.receiveShadow = true;
 // add box or model to vehicle parent
 vehicleGroup.add(box);
 scene.add(vehicleGroup);
-vehicleGroup.position.set(0, 2, 0);
+vehicleGroup.position.set(0, 1, 0);
 // setup rigidbody for this box, with an input object to pass in user inputs
 const input = {
   accel: false,
@@ -114,14 +167,14 @@ const input = {
   left: false,
   right: false,
 }
-const vehicle = new VehicleBody(vehicleGroup, input, [plane], scene);
+const vehicle = new VehicleBody(vehicleGroup, input, playground, scene);
 vehicle.createBox(1400, vehicleGroup.position, vehicleGroup.quaternion, new THREE.Vector3(1.65, 1.23, 4.1), centerOfGravity);
 // create wheels by using an array of relative wheel positions
 vehicle.createWheels([
-  { pos: new THREE.Vector3(vehicle.size.x / 2, -vehicle.size.y / 1.3, vehicle.size.z / 3), suspensionStrength: 18000, suspensionDamping: 900, wheelRadius: 0.35, powered: true, steering: true, brakes: true },
-  { pos: new THREE.Vector3(-vehicle.size.x / 2, -vehicle.size.y / 1.3, vehicle.size.z / 3), suspensionStrength: 18000, suspensionDamping: 900, wheelRadius: 0.35, powered: true, steering: true, brakes: true },
-  { pos: new THREE.Vector3(vehicle.size.x / 2, -vehicle.size.y / 1.3, -vehicle.size.z / 3), suspensionStrength: 18000, suspensionDamping: 900, wheelRadius: 0.35, powered: false, steering: false, brakes: true },
-  { pos: new THREE.Vector3(-vehicle.size.x / 2, -vehicle.size.y / 1.3, -vehicle.size.z / 3), suspensionStrength: 18000, suspensionDamping: 900, wheelRadius: 0.35, powered: false, steering: false, brakes: true }
+  { pos: new THREE.Vector3(vehicle.size.x / 2, -vehicle.size.y / 1.3, vehicle.size.z / 3), suspensionStrength: 24000, suspensionDamping: 900, wheelRadius: 0.33, powered: true, steering: true, brakes: true },
+  { pos: new THREE.Vector3(-vehicle.size.x / 2, -vehicle.size.y / 1.3, vehicle.size.z / 3), suspensionStrength: 24000, suspensionDamping: 900, wheelRadius: 0.33, powered: true, steering: true, brakes: true },
+  { pos: new THREE.Vector3(vehicle.size.x / 2, -vehicle.size.y / 1.3, -vehicle.size.z / 3), suspensionStrength: 24000, suspensionDamping: 900, wheelRadius: 0.33, powered: false, steering: false, brakes: true },
+  { pos: new THREE.Vector3(-vehicle.size.x / 2, -vehicle.size.y / 1.3, -vehicle.size.z / 3), suspensionStrength: 24000, suspensionDamping: 900, wheelRadius: 0.33, powered: false, steering: false, brakes: true }
 ]);
 physicsWorld.addBody(vehicle.body);
 
@@ -129,13 +182,13 @@ physicsWorld.addBody(vehicle.body);
 const rigidBodies = [{ mesh: vehicleGroup, rigidBody: vehicle }];
 
 // setup cannon debugger
-// const cannonDebugger = new CannonDebugger(scene, physicsWorld);
+const cannonDebugger = new CannonDebugger(scene, physicsWorld);
 
 // setup step function (update function)
 function step(delta) {
   // step our physics simulation
   physicsWorld.fixedStep(1 / 120, 10);
-  // cannonDebugger.update();
+  cannonDebugger.update();
 
   // update our vehicle
   vehicle.updateVehicle(delta);

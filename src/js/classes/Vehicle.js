@@ -27,10 +27,10 @@ class VehicleBody {
 
     // setup engine
     this.currentRPM = 0;
-    this.maxRPM = 6000;
+    this.maxRPM = 7000;
     this.minRPM = 1000;
     this.currentGear = 1; // 0 is reverse
-    this.gears = [-2.9, 2.66, 1.78, 1.3, 1.0, 0.74, 0.5];
+    this.gears = [-6, 5.5, 3.8, 2.5, 1.7, 1, 0.6];
     this.gearRatio = this.gears[this.currentGear]; // current gear ratio; set to constant for testing
     this.finalDrive = 3.42; // differential drive
     this.transmissionLoss = 0.7; // transmission efficiency
@@ -106,13 +106,27 @@ class VehicleBody {
 
     // now go through each wheel and add an audio source for wheel slip
     for (let i = 0; i < this.wheels.length; i++) {
-      this.wheels[i].longSlipSound = new TONE.Oscillator(1400, 'sawtooth32').toDestination();
-      this.wheels[i].longSlipSound.set({ volume: -100 });
-      this.wheels[i].longSlipSound.start();
+      this.wheels[i].longSlipSound = new TONE.FMSynth().toDestination();
+      this.wheels[i].longSlipSound.set({
+        volume: -100,
+        harmonicity: 0.6,
+        modulationIndex: 2,
+        oscillator: {
+          type: 'sawtooth8'
+        }
+      });
+      this.wheels[i].longSlipSound.triggerAttack();
 
-      this.wheels[i].latSlipSound = new TONE.Oscillator(1400, 'sine32').toDestination();
-      this.wheels[i].latSlipSound.set({ volume: -100 });
-      this.wheels[i].latSlipSound.start();
+      this.wheels[i].latSlipSound = new TONE.FMSynth().toDestination();
+      this.wheels[i].latSlipSound.set({
+        volume: -100,
+        harmonicity: 0.6,
+        modulationIndex: 2,
+        oscillator: {
+          type: 'sawtooth8'
+        }
+      });
+      this.wheels[i].latSlipSound.triggerAttack();
     }
   }
 
@@ -123,8 +137,8 @@ class VehicleBody {
 
       // loop through wheels
       for (let i = 0; i < this.wheels.length; i++) {
-        this.wheels[i].longSlipSound.start();
-        this.wheels[i].latSlipSound.start();
+        this.wheels[i].longSlipSound.triggerAttack();
+        this.wheels[i].latSlipSound.triggerAttack();
       }
 
       this.isPlayingAudio = true;
@@ -136,8 +150,8 @@ class VehicleBody {
 
       // loop through wheels
       for (let i = 0; i < this.wheels.length; i++) {
-        this.wheels[i].longSlipSound.stop();
-        this.wheels[i].latSlipSound.stop();
+        this.wheels[i].longSlipSound.triggerRelease();
+        this.wheels[i].latSlipSound.triggerRelease();
       }
 
       this.isPlayingAudio = false;
@@ -200,6 +214,7 @@ class VehicleBody {
         previousVelocity: new THREE.Vector3(0, 0, 0),
         previousForwardVelocity: new THREE.Vector3(0, 0, 0),
         forwardDir: new THREE.Vector3(0, 0, 1),
+        downFromBody: new THREE.Vector3(0, 0, 0),
         isGrounded: false,
         obj: new THREE.Object3D(),
         wheelRadius: wheelArray[i].wheelRadius,
@@ -324,17 +339,15 @@ class VehicleBody {
       // main oscillator
       this.engineSound.set({
         frequency: this.currentRPM / 25 + (Math.random() * 6 - 3),
-        harmonicity: 0.5 + Math.random() * 0.01 - 0.005,
-        modulationIndex: 0.8 + Math.random() * 0.2 - 0.1
       });
       // lowpass
       this.engineFilter.set({
         frequency: 270 + this.throttle * 10,
-        Q: 4 + this.throttle * 2
+        Q: 4 + this.throttle * 1.6
       });
       // distortion
       this.engineDistortion.set({
-        distortion: 0.2 + this.throttle * 0.2
+        distortion: 0.2 + this.throttle * 0.1
       });
     }
 
@@ -378,19 +391,21 @@ class VehicleBody {
       this.wheels[i].obj.getWorldPosition(position);
 
       // cast a ray to see if the wheel is touching the ground
-      position.add(new THREE.Vector3(0, this.wheels[i].wheelRadius, 0));
+      const downFromBody = direction.clone().multiplyScalar(-this.wheels[i].wheelRadius).applyQuaternion(this.wheels[i].obj.quaternion);
+      this.wheels[i].downFromBody = downFromBody; // store for other functions
+      position.add(downFromBody);
       // set max length for raycaster
       this.raycaster.far = this.wheels[i].wheelRadius * 2;
       // now cast the ray
-      this.raycaster.set(position, direction); // down vector is relative to wheel
+      this.raycaster.set(position, direction); // cast ray directly down
       const intersects = this.raycaster.intersectObjects(this.collisionObjects); // intersect our plane
       if (intersects.length > 0) {
         this.wheels[i].target = intersects[0].point;
-        this.wheels[i].target.y += this.wheels[i].wheelRadius;
+        this.wheels[i].target.add(downFromBody);
         this.wheels[i].isGrounded = true;
         this.wheels[i].normal = intersects[0].face.normal;
       } else {
-        this.wheels[i].target = position.sub(new THREE.Vector3(0, this.wheels[i].wheelRadius, 0));
+        this.wheels[i].target = position.sub(downFromBody);
         this.wheels[i].isGrounded = false;
         this.wheels[i].normal = new THREE.Vector3(0, 0, 0);
       }
@@ -483,9 +498,14 @@ class VehicleBody {
       // trigger wheel slip tire screech audio
       if (this.wheels[i].longSlipSound) {
         if (Math.abs(slipRatio) > 0.1 && this.wheels[i].isGrounded && this.wheels[i].previousForwardVelocity.length() > 0.2) {
-          this.wheels[i].longSlipSound.set({ volume: -100 + Math.abs(50 * slipRatio), frequency: Math.max(1200, Math.min(2000, 200 * this.wheels[i].previousForwardVelocity.length())) });
+          this.wheels[i].longSlipSound.set({
+            volume: -100 + Math.abs(50 * slipRatio),
+            frequency: Math.max(1200, Math.min(2000, 200 * this.wheels[i].previousForwardVelocity.length())),
+          });
         } else {
-          this.wheels[i].longSlipSound.set({ volume: -100 });
+          this.wheels[i].longSlipSound.set({
+            volume: -100
+          });
         }
       }
 
@@ -529,7 +549,7 @@ class VehicleBody {
         // calculate a damping force and apply it
         // calculate the velocity at the point of our wheel
         let velocity = this.getVelocityAtPoint(this.wheels[i].target);
-        velocity.projectOnVector(new THREE.Vector3(0, 1, 0));
+        velocity.projectOnVector(this.wheels[i].downFromBody);
         // use it to calc our spring damping force
         let dampingForce = velocity.multiplyScalar(-this.wheels[i].suspensionDamping); // invert damping force to negate suspension force
 
@@ -676,9 +696,14 @@ class VehicleBody {
       // play tirescreech based on slip angle
       if (this.wheels[i].latSlipSound) {
         if (Math.abs(slipAngle) > 5 && this.wheels[i].isGrounded && this.wheels[i].previousForwardVelocity.length() > 0.2) {
-          this.wheels[i].latSlipSound.set({ volume: -100 + Math.max(42, Math.abs(slipAngle)), frequency: Math.max(1200, Math.min(1600, appliedSlipForce / 4)) });
+          this.wheels[i].latSlipSound.set({
+            volume: -100 + Math.max(42, Math.abs(slipAngle)),
+            frequency: Math.max(1200, Math.min(1600, appliedSlipForce / 4)),
+          });
         } else {
-          this.wheels[i].latSlipSound.set({ volume: -100 });
+          this.wheels[i].latSlipSound.set({
+            volume: -100,
+          });
         }
       }
 

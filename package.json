@@ -1,7 +1,6 @@
 {
   "dependencies": {
     "cannon-es": "^0.20.0",
-    "cannon-es-debugger": "^1.0.0",
     "three": "^0.150.0",
     "tone": "^14.7.77"
   },
@@ -10,7 +9,7 @@
     "dev": "npx webpack serve --config webpack.dev.config.js"
   },
   "devDependencies": {
-    "esmify": "^2.1.1",
+    "cannon-es-debugger": "^1.0.0",
     "webpack": "^5.75.0",
     "webpack-cli": "^5.0.1",
     "webpack-dev-server": "^4.11.1"
