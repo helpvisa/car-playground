@@ -348,7 +348,7 @@ class VehicleBody {
     this.currentRPM = averageRPM * this.gearRatio * this.finalDrive; // convert to RPM from rad/s
 
     // clamp RPM values
-    this.currentRPM = Math.max(this.minRPM, Math.min(this.maxRPM, this.currentRPM));
+    this.currentRPM = Math.max(this.minRPM, this.currentRPM);
 
     // update audio ramps
     if (this.engineSound) {
@@ -368,7 +368,8 @@ class VehicleBody {
     }
 
     // look up torque curve
-    this.appliedTorque = torqueCurve.getValueAtPos((this.currentRPM) / this.maxRPM) * this.throttle;
+    this.availableTorque = torqueCurve.getValueAtPos((this.currentRPM) / this.maxRPM);
+    this.appliedTorque = this.availableTorque * this.throttle;
 
     // update OSD
     let gearText = "1st";
@@ -454,12 +455,18 @@ class VehicleBody {
 
       // calculate acceleration force from engine if wheel is connected
       let engineAccel = 0;
-      if (this.wheels[i].powered) {
-        // calculate max allowed angular velocity at current gear
-        let maxAllowedWheelVelocity = (this.maxRPM * (2 * Math.PI) / 60 / this.gearRatio / this.finalDrive);
 
-        if (Math.abs(this.wheels[i].angularVelocity) > Math.abs(maxAllowedWheelVelocity)) {
-          this.wheels[i].angularVelocity = maxAllowedWheelVelocity;
+      // calculate max allowed angular velocity at current gear
+      let maxAllowedWheelVelocity = (this.maxRPM * (2 * Math.PI) / 60 / this.gearRatio / this.finalDrive);
+      if (this.wheels[i].powered) {
+        if (Math.abs(this.wheels[i].angularVelocity) > Math.abs(maxAllowedWheelVelocity)
+          || (this.gearRatio < 0 && this.wheels[i].angularVelocity > 0) // if in reverse gear while going forward
+          || (this.gearRatio > 0 && this.wheels[i].angularVelocity < 0)) { // if in forward gear while reversing
+          // apply engine braking
+          engineAccel = (this.availableTorque * Math.abs(this.gearRatio) * this.finalDrive) / this.numPoweredWheels;
+          if (this.wheels[i].angularVelocity > 0) {
+            engineAccel *= -1; // always braking force
+          }
         } else {
           engineAccel = (this.appliedTorque * this.gearRatio * this.finalDrive) / this.numPoweredWheels;
         }
