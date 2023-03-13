@@ -1,4 +1,5 @@
 {
+  "homepage": "https://helpvisa.github.io/car-playground/",
   "dependencies": {
     "cannon-es": "^0.20.0",
     "three": "^0.150.0",
