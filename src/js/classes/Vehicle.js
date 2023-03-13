@@ -3,9 +3,11 @@ import * as CANNON from 'cannon-es';
 import * as THREE from 'three';
 import * as TONE from 'tone';
 import { torqueCurve, pacejkaCurve } from './Curve.js';
+// import images
+import wheelTexPath from "../../textures/checker_02.jpg";
 
 // create models / textures for use within class
-const wheelTex = new THREE.TextureLoader().load("./src/textures/checker_02.jpg");
+const wheelTex = new THREE.TextureLoader().load(wheelTexPath);
 wheelTex.wrapS = THREE.RepeatWrapping;
 wheelTex.wrapT = THREE.RepeatWrapping;
 wheelTex.repeat.set(1, 1);

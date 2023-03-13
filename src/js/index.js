@@ -1,10 +1,15 @@
+// import our css styling
+import "../css/styles.css";
 // import our library dependencies
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import * as CANNON from 'cannon-es';
 // import CannonDebugger from 'cannon-es-debugger';
 import * as TONE from 'tone';
-
+// import our models
+import playgroundModelPath from "../models/environment/car-playground.gltf";
+// and our images
+import checkerPath from "../textures/wheel_test_tex.jpg";
 // import our custom classes / objects
 import { RigidBody } from './classes/RigidBody.js';
 import { VehicleBody } from './classes/Vehicle.js';
@@ -12,7 +17,7 @@ import { VehicleBody } from './classes/Vehicle.js';
 /***********************************************************************************/
 // load textures
 // load our wheel texture
-const checker = new THREE.TextureLoader().load("./src/textures/wheel_test_tex.jpg");
+const checker = new THREE.TextureLoader().load(checkerPath);
 checker.wrapS = THREE.RepeatWrapping;
 checker.wrapT = THREE.RepeatWrapping;
 checker.repeat.set(100, 100);
@@ -80,7 +85,7 @@ scene.add(sun, sun.target, ambient);
 
 // load our playground model
 const playground = [];
-loader.load('./src/models/environment/car-playground.glb', (gltf) => {
+loader.load(playgroundModelPath, (gltf) => {
   gltf.scene.traverse((child) => {
     // enable shadowcasting
     child.castShadow = true;

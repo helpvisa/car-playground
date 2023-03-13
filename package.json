@@ -6,10 +6,17 @@
   },
   "scripts": {
     "build": "npx webpack --config webpack.config.js",
-    "dev": "npx webpack serve --config webpack.dev.config.js"
+    "dev": "npx webpack serve --config webpack.dev.config.js",
+    "predeploy": "npm run build",
+    "deploy": "gh-pages -d dist"
   },
   "devDependencies": {
     "cannon-es-debugger": "^1.0.0",
+    "css-loader": "^6.7.3",
+    "gh-pages": "^5.0.0",
+    "gltf-loader": "^1.0.0",
+    "html-webpack-plugin": "^5.5.0",
+    "style-loader": "^3.3.2",
     "webpack": "^5.75.0",
     "webpack-cli": "^5.0.1",
     "webpack-dev-server": "^4.11.1"
