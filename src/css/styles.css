@@ -1,7 +1,6 @@
 * {
   margin: 0px;
   padding: 0px;
-  background-color: rgb(65, 65, 65);
   /* disable text highlighting in general (an issue in chrome mobile) */
   -webkit-touch-callout: none;
   -webkit-user-select: none;
@@ -9,39 +8,74 @@
   user-select: none;
 }
 
+body {
+  background-color: rgb(65, 65, 65);
+}
+
 #canvas-body {
-  margin: 10vh 20vw;
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+}
+
+#tutorial {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+
+  padding: 10px;
+
+  color: white;
+  background-color: rgba(65, 65, 65, 0.5);
+
+  font-size: 2.5vw;
+  text-align: center;
+
+  border-radius: 20px;
 }
 
 #info {
-  color: white;
-  background-color: transparent;
-  font-size: 2.5vw;
   position: absolute;
-  top: 8vh;
-  width: 100%;
+  top: 10%;
+  left: 50%;
+  transform: translate(-50%, 0);
+
+  padding: 10px;
+
+  color: white;
+  background-color: rgba(65, 65, 65, 0.5);
+
+  font-size: 2.5vw;
   text-align: center;
-  z-index: 100;
-  display: block;
+
+  border-radius: 20px;
 }
 
 #controls {
+  position: absolute;
+  bottom: 0%;
+  left: 50%;
+  transform: translate(-50%, 0);
+  width: 100%;
+
   display: flex;
   justify-content: space-between;
-  margin: 0px;
-  height: 0px;
+
+  background-color: rgba(65, 65, 65, 0.5);
 }
 
 #controls button {
-  -webkit-touch-callout: none;
-  -webkit-user-select: none;
-  -ms-user-select: none;
-  user-select: none;
   color: black;
   font-size: 3.5vw;
+
   background-color: darkkhaki;
-  padding: 2px;
-  margin: 4px;
+
+  border-radius: 12px;
+
+  padding: 10px;
+  margin: 0.5vw 1.5vw;
 }
 
 #controls .accelerator {
@@ -55,13 +89,39 @@
   background-color: lightblue;
 }
 
+#debug-toggles {
+  position: absolute;
+  top: 0%;
+  left: 0%;
+  display: flex;
+  flex-direction: row;
+}
+
 .toggle {
-  -webkit-touch-callout: none;
-  -webkit-user-select: none;
-  -ms-user-select: none;
-  user-select: none;
   color: white;
-  margin-right: 2px;
-  padding: 2px;
-  font-size: 2vw;
+  background-color: rgba(65, 65, 65, 0.75);
+
+  margin: 6px;
+  padding: 12px;
+
+  font-size: 1.8vw;
+
+  border-radius: 12px;
+}
+
+/* animation */
+@keyframes fadeOut {
+  from {opacity: 1;}
+  to {opacity: 0;}
+}
+@keyframes fadeIn {
+  from{opacity: 0;}
+  to {opacity: 1;}
+}
+
+.fade-in {
+  animation: fadeIn 1s both;
+}
+.fade-out {
+  animation: fadeOut 10s both;
 }

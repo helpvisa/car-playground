@@ -40,7 +40,7 @@ const threejs = new THREE.WebGLRenderer({ antialias: true });
 threejs.shadowMap.enabled = true;
 threejs.shadowMap.type = THREE.PCFSoftShadowMap;
 threejs.setPixelRatio(window.devicePixelRatio);
-threejs.setSize(window.innerWidth * 0.6, window.innerHeight * 0.6);
+threejs.setSize(window.innerWidth, window.innerHeight);
 
 // setup our internal clock
 const t = new THREE.Clock();
@@ -61,7 +61,7 @@ window.addEventListener("resize", () => {
   camera.top = 20 / 2;
   camera.bottom = 20 / -2;
   camera.updateProjectionMatrix();
-  threejs.setSize(window.innerWidth * 0.6, window.innerHeight * 0.6);
+  threejs.setSize(window.innerWidth, window.innerHeight);
 }, false);
 
 // setup lights
@@ -176,10 +176,10 @@ const vehicle = new VehicleBody(vehicleGroup, input, playground, scene);
 vehicle.createBox(1400, vehicleGroup.position, vehicleGroup.quaternion, new THREE.Vector3(1.65, 1.23, 4.1), centerOfGravity);
 // create wheels by using an array of relative wheel positions
 vehicle.createWheels([
-  { pos: new THREE.Vector3(vehicle.size.x / 2, -vehicle.size.y / 1.3, vehicle.size.z / 3), suspensionStrength: 24000, suspensionDamping: 900, wheelRadius: 0.33, powered: true, steering: true, brakes: true },
-  { pos: new THREE.Vector3(-vehicle.size.x / 2, -vehicle.size.y / 1.3, vehicle.size.z / 3), suspensionStrength: 24000, suspensionDamping: 900, wheelRadius: 0.33, powered: true, steering: true, brakes: true },
-  { pos: new THREE.Vector3(vehicle.size.x / 2, -vehicle.size.y / 1.3, -vehicle.size.z / 3), suspensionStrength: 24000, suspensionDamping: 900, wheelRadius: 0.33, powered: false, steering: false, brakes: true },
-  { pos: new THREE.Vector3(-vehicle.size.x / 2, -vehicle.size.y / 1.3, -vehicle.size.z / 3), suspensionStrength: 24000, suspensionDamping: 900, wheelRadius: 0.33, powered: false, steering: false, brakes: true }
+  { pos: new THREE.Vector3(vehicle.size.x / 2, -vehicle.size.y / 1.3, vehicle.size.z / 3), suspensionStrength: 24000, suspensionDamping: 1800, wheelRadius: 0.33, powered: true, steering: true, brakes: true },
+  { pos: new THREE.Vector3(-vehicle.size.x / 2, -vehicle.size.y / 1.3, vehicle.size.z / 3), suspensionStrength: 24000, suspensionDamping: 1800, wheelRadius: 0.33, powered: true, steering: true, brakes: true },
+  { pos: new THREE.Vector3(vehicle.size.x / 2, -vehicle.size.y / 1.3, -vehicle.size.z / 3), suspensionStrength: 24000, suspensionDamping: 1800, wheelRadius: 0.33, powered: false, steering: false, brakes: true },
+  { pos: new THREE.Vector3(-vehicle.size.x / 2, -vehicle.size.y / 1.3, -vehicle.size.z / 3), suspensionStrength: 24000, suspensionDamping: 1800, wheelRadius: 0.33, powered: false, steering: false, brakes: true }
 ]);
 physicsWorld.addBody(vehicle.body);
 
@@ -262,6 +262,8 @@ shiftDiv.append(shiftDownEl, shiftUpEl);
 controlDiv.append(movementDiv, shiftDiv, steerDiv);
 
 // add toggles
+let toggleContainerEl = document.createElement("div");
+toggleContainerEl.id = "debug-toggles";
 let toggleDebugEl = document.createElement("button");
 let toggleWheelsEl = document.createElement("button");
 toggleDebugEl.textContent = "toggle debug lines";
@@ -277,10 +279,10 @@ toggleWheelsEl.addEventListener("click", () => {
 });
 
 canvasDiv.appendChild(controlDiv);
-// capture our game div
-document.getElementById('game-div').append(toggleDebugEl, toggleWheelsEl);
+toggleContainerEl.append(toggleDebugEl, toggleWheelsEl);
 // add the canvas body to the page
-document.getElementById('game-div').appendChild(canvasDiv);
+document.getElementById('game-div').append(canvasDiv, toggleContainerEl);
+
 
 // register an event handler for keyboard input
 document.addEventListener('keydown', (e) => {
