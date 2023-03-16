@@ -6,6 +6,7 @@
   -webkit-user-select: none;
   -ms-user-select: none;
   user-select: none;
+  font-family: monospace;
 }
 
 body {
@@ -34,6 +35,9 @@ body {
   text-align: center;
 
   border-radius: 20px;
+
+  -webkit-backdrop-filter: blur(10px);
+  backdrop-filter: blur(10px);
 }
 
 #info {
@@ -51,6 +55,9 @@ body {
   text-align: center;
 
   border-radius: 20px;
+
+  -webkit-backdrop-filter: blur(10px);
+  backdrop-filter: blur(10px);
 }
 
 #controls {
@@ -72,10 +79,16 @@ body {
 
   background-color: darkkhaki;
 
+  border-style: solid;
+  border-width: 4px;
   border-radius: 12px;
 
   padding: 10px;
   margin: 0.5vw 1.5vw;
+}
+
+#controls button:active {
+  filter: contrast(0.5);
 }
 
 #controls .accelerator {
@@ -93,8 +106,11 @@ body {
   position: absolute;
   top: 0%;
   left: 0%;
+  width: 100%;
+  
   display: flex;
   flex-direction: row;
+  justify-content: center;
 }
 
 .toggle {
@@ -106,7 +122,14 @@ body {
 
   font-size: 1.8vw;
 
+  border-style: solid;
+  border-width: 4px;
   border-radius: 12px;
+}
+
+.link {
+  color: rgb(211, 211, 255);
+  font-style: oblique;
 }
 
 /* animation */

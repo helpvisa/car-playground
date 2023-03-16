@@ -51,6 +51,8 @@ const scene = new THREE.Scene();
 // setup camera
 let viewRatio = window.innerWidth / window.innerHeight;
 const camera = new THREE.OrthographicCamera(viewRatio * 20 / -2, viewRatio * 20 / 2, 20 / 2, 20 / -2, -1000, 1000);
+camera.zoom = 0.8;
+camera.updateProjectionMatrix();
 camera.position.set(10, 10, 10);
 camera.lookAt(0, 0, 0);
 // window resize function (resizes canvas)
@@ -266,10 +268,16 @@ let toggleContainerEl = document.createElement("div");
 toggleContainerEl.id = "debug-toggles";
 let toggleDebugEl = document.createElement("button");
 let toggleWheelsEl = document.createElement("button");
+let zoomInEl = document.createElement("button");
+let zoomOutEl = document.createElement("button");
 toggleDebugEl.textContent = "toggle debug lines";
 toggleWheelsEl.textContent = "toggle wheel drawing";
 toggleDebugEl.className = "toggle";
 toggleWheelsEl.className = "toggle";
+zoomInEl.className = "toggle";
+zoomInEl.textContent = "+";
+zoomOutEl.className = "toggle";
+zoomOutEl.textContent = "-";
 // add functionality to toggles
 toggleDebugEl.addEventListener("click", () => {
   vehicle.toggleDebug();
@@ -277,9 +285,25 @@ toggleDebugEl.addEventListener("click", () => {
 toggleWheelsEl.addEventListener("click", () => {
   vehicle.toggleWheelVisibility();
 });
+zoomInEl.addEventListener("click", () => {
+  camera.zoom += 0.2;
+  camera.zoom = Math.min(2, camera.zoom);
+  camera.updateProjectionMatrix();
+});
+zoomOutEl.addEventListener("click", () => {
+  camera.zoom -= 0.2;
+  camera.zoom = Math.max(0.1, camera.zoom);
+  camera.updateProjectionMatrix();
+});
+// create a github link while we're at it
+let githubLink = document.createElement("a");
+githubLink.className = "toggle link";
+githubLink.setAttribute("href", "https://github.com/helpvisa/car-playground");
+githubLink.setAttribute("target", "_blank");
+githubLink.textContent = "dan brack / github↝";
 
 canvasDiv.appendChild(controlDiv);
-toggleContainerEl.append(toggleDebugEl, toggleWheelsEl);
+toggleContainerEl.append(toggleDebugEl, toggleWheelsEl, zoomInEl, zoomOutEl, githubLink);
 // add the canvas body to the page
 document.getElementById('game-div').append(canvasDiv, toggleContainerEl);
 
