@@ -194,18 +194,23 @@ const rigidBodies = [{ mesh: vehicleGroup, rigidBody: vehicle }];
 // setup step function (update function)
 function step(delta) {
   // step our physics simulation
-  physicsWorld.fixedStep(1 / 120, 10);
+  // physicsWorld.fixedStep(1 / 120, 10);
   // cannonDebugger.update();
 
   // update our vehicle
-  vehicle.updateVehicle(delta);
+  // vehicle.updateVehicle(delta);
+}
 
+function fixedStep(delta) {
+  // step our physics simulation
+  physicsWorld.step(1 / 240, delta, 10);
+  // update our vehicle
+  vehicle.updateVehicle(delta);
   // make meshes match physics world
   for (let i = 0; i < rigidBodies.length; i++) {
     rigidBodies[i].mesh.position.copy(rigidBodies[i].rigidBody.body.position);
     rigidBodies[i].mesh.quaternion.copy(rigidBodies[i].rigidBody.body.quaternion);
   }
-
   // update camera to follow vehicle
   camera.position.set(vehicleGroup.position.x + 10, vehicleGroup.position.y + 10, vehicleGroup.position.z + 10);
   // update directional light
@@ -215,19 +220,21 @@ function step(delta) {
 
 // render function
 let shouldStep = true;
+let hasStarted = false;
 function renderFrame() {
-  let delta = t.getDelta();
-  if (delta > 0.05) {
-    delta = 0;
-    console.log('framerate too low; resetting delta time');
-  }
-
-  if (shouldStep) {
-    step(delta); // call our update function
+  if (!hasStarted) {
+    hasStarted = true;
+    setInterval(runPhysics, 4.15);
   }
   threejs.render(scene, camera);
-
   requestAnimationFrame(renderFrame);
+}
+
+function runPhysics() {
+  const delta = t.getDelta()
+  if (shouldStep) {
+    fixedStep(delta);
+  }
 }
 
 // create a div to hold the canvas
