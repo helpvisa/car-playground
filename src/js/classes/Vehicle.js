@@ -659,8 +659,8 @@ class VehicleBody {
         targetQuatMesh.setFromEuler(meshTarget);
 
         // set wheel's rotation
-        this.wheels[i].obj.quaternion.rotateTowards(targetQuatWheel, 1.2 * Math.PI / 180);
-        this.wheels[i].mesh.quaternion.rotateTowards(targetQuatMesh, 1.2 * Math.PI / 180);
+        this.wheels[i].obj.quaternion.rotateTowards(targetQuatWheel, 0.25 * Math.PI / 180);
+        this.wheels[i].mesh.quaternion.rotateTowards(targetQuatMesh, 0.25 * Math.PI / 180);
       }
 
       // get velocity
