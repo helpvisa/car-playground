@@ -1,5 +1,14 @@
 # Car Playground
 
+## UPDATE - 02-13-24
+Well, this project is really a bit of a mess!
+At its core, this was just an excuse to play around with Three.Js and learn more about how raycast vehicle physics work.
+The code is all over the place and many things really ought to be split into their own classes, source files, etc., but it forms a great basis for a more coherent and functional re-implementation down the line, perhaps in Godot or another more pratical engine.
+The vehicle is technically "fully implemented" insofar as you can mess with gear ratios, suspension settings, various driveshaft configurations, etc. but you'll have to dig into the code for that. Sorry!
+The original, very optimistic readme follows below.
+
+----
+
 An online environment to play around with a semi-accurately-simulated vehicle.
 
 Currently implements semi-realistic tire modelling using the Pacejka Magic Formula, engine RPM / torque and gearing with engine braking, angular velocity / wheel slip + locking.
