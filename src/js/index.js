@@ -178,10 +178,10 @@ const vehicle = new VehicleBody(vehicleGroup, input, playground, scene);
 vehicle.createBox(1400, vehicleGroup.position, vehicleGroup.quaternion, new THREE.Vector3(1.65, 1.23, 4.1), centerOfGravity);
 // create wheels by using an array of relative wheel positions
 vehicle.createWheels([
-  { pos: new THREE.Vector3(vehicle.size.x / 2, -vehicle.size.y / 1.3, vehicle.size.z / 3), suspensionStrength: 24000, suspensionDamping: 1800, wheelRadius: 0.33, powered: true, steering: true, brakes: true },
-  { pos: new THREE.Vector3(-vehicle.size.x / 2, -vehicle.size.y / 1.3, vehicle.size.z / 3), suspensionStrength: 24000, suspensionDamping: 1800, wheelRadius: 0.33, powered: true, steering: true, brakes: true },
-  { pos: new THREE.Vector3(vehicle.size.x / 2, -vehicle.size.y / 1.3, -vehicle.size.z / 3), suspensionStrength: 24000, suspensionDamping: 1800, wheelRadius: 0.33, powered: false, steering: false, brakes: true },
-  { pos: new THREE.Vector3(-vehicle.size.x / 2, -vehicle.size.y / 1.3, -vehicle.size.z / 3), suspensionStrength: 24000, suspensionDamping: 1800, wheelRadius: 0.33, powered: false, steering: false, brakes: true }
+  { pos: new THREE.Vector3(vehicle.size.x / 2, -vehicle.size.y / 1.3, vehicle.size.z / 3), suspensionStrength: 24000, suspensionDamping: 1800, wheelRadius: 0.33, powered: false, steering: true, brakes: true },
+  { pos: new THREE.Vector3(-vehicle.size.x / 2, -vehicle.size.y / 1.3, vehicle.size.z / 3), suspensionStrength: 24000, suspensionDamping: 1800, wheelRadius: 0.33, powered: false, steering: true, brakes: true },
+  { pos: new THREE.Vector3(vehicle.size.x / 2, -vehicle.size.y / 1.3, -vehicle.size.z / 3), suspensionStrength: 24000, suspensionDamping: 1800, wheelRadius: 0.33, powered: true, steering: false, brakes: true },
+  { pos: new THREE.Vector3(-vehicle.size.x / 2, -vehicle.size.y / 1.3, -vehicle.size.z / 3), suspensionStrength: 24000, suspensionDamping: 1800, wheelRadius: 0.33, powered: true, steering: false, brakes: true }
 ]);
 physicsWorld.addBody(vehicle.body);
 
